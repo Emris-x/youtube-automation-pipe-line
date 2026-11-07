@@ -40,6 +40,16 @@ def build(script_path, out_name=None, tts_engine=None, theme=None):
         timing_path = os.path.join(AUDIO_DIR, f"{out_name}_{sid}_timing.json")
         boundaries = tts_generate(scene["text"], audio_path, timing_path, tts_engine)
 
+        expected_words = len(scene["text"].split())
+        got_words = len(boundaries)
+        total_duration_check = boundaries[-1]["offset_s"] + boundaries[-1]["duration_s"] if boundaries else 0.0
+        if not boundaries:
+            print(f"[{sid}] WARNING: no word timing came back at all — captions will be skipped and this clip will fall back to a flat 3s, likely cutting the audio short")
+        elif got_words < expected_words * 0.85:
+            print(f"[{sid}] WARNING: only {got_words}/{expected_words} words of the script got timing ({total_duration_check:.1f}s) — the clip may cut off early")
+        else:
+            print(f"[{sid}] {got_words}/{expected_words} words captured, {total_duration_check:.1f}s")
+
         print(f"[{sid}] rendering motion graphics...")
         silent_video = os.path.join(OUTPUT_DIR, f"{out_name}_{sid}_silent.mp4")
         _, duration = render_scene(scene, boundaries, silent_video, theme=theme)

@@ -45,7 +45,14 @@ def _split_words(text):
 
 async def _generate_edge(text, out_audio, out_timing):
     import edge_tts
-    communicate = edge_tts.Communicate(text, EDGE_VOICE, rate=EDGE_RATE)
+    # edge-tts changed its default `boundary` mode to "SentenceBoundary" in
+    # a recent release (ours used to rely on the old default of
+    # "WordBoundary"). Without this explicit arg, no WordBoundary chunks
+    # are ever emitted, boundaries ends up empty, render_scene falls back
+    # to a hardcoded 3s clip, and captions silently don't draw at all
+    # (both gated on `if boundaries:`) — this was the real cause of the
+    # captionless, ~3-second-per-scene, audio-gets-cut-off bug.
+    communicate = edge_tts.Communicate(text, EDGE_VOICE, rate=EDGE_RATE, boundary="WordBoundary")
     boundaries = []
     with open(out_audio, "wb") as audio_file:
         async for chunk in communicate.stream():
@@ -155,7 +162,7 @@ def generate(text, out_audio, out_timing, engine=None):
         try:
             return asyncio.run(_generate_edge(text, out_audio, out_timing))
         except Exception as e:
-            print(f"[tts] edge-tts unreachable ({e.__class__.__name__}), falling back to espeak for this run")
+            print(f"[tts] edge-tts failed ({e.__class__.__name__}: {e}), falling back to espeak for this run")
             return _generate_espeak(text, out_audio, out_timing)
 
     if engine == "espeak":

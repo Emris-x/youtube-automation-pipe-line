@@ -15,6 +15,24 @@ import sys
 
 MID_VISUALS = ["icon_sequence", "bar_chart_animate", "loop_animation", "data_flow", "bullet_reveal"]
 
+# Matches a leading stage-direction label like "Scene one:", "Scene 3 -",
+# "Hook:", "CTA:", "Call to action:", "Intro:" — people (and Claude, when
+# dictating a sample script by voice) naturally write scripts with these,
+# but they're directions, not dialogue, and were being read aloud verbatim.
+_LABEL_RE = re.compile(
+    r"^\s*(scene\s*[\w-]+|hook|cta|call[\s-]?to[\s-]?action|intro|outro)\s*[:\-–—]\s*",
+    re.IGNORECASE,
+)
+
+
+def _strip_label(text):
+    text = _LABEL_RE.sub("", text, count=1).strip()
+    # drop a pair of wrapping quotes left over once the label's gone, e.g.
+    # `Scene one: "One software update..."` -> `One software update...`
+    if len(text) >= 2 and text[0] in "\"'“‘" and text[-1] in "\"'”’":
+        text = text[1:-1].strip()
+    return text
+
 
 def _chunk_by_words(text, max_words=22):
     words = text.split()
@@ -36,6 +54,9 @@ def text_to_script(raw_text, title=None, terminal_label="script.log"):
     if len(paragraphs) < 3:
         # no real scene breaks given -> auto-chunk the whole thing
         paragraphs = _chunk_by_words(raw_text)
+
+    paragraphs = [_strip_label(p) for p in paragraphs]
+    paragraphs = [p for p in paragraphs if p]  # a label-only paragraph can strip to nothing
 
     scenes = []
     n = len(paragraphs)
