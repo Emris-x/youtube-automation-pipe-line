@@ -87,9 +87,34 @@ def get_authenticated_service():
     return build("youtube", "v3", credentials=creds)
 
 
+def _check_video_is_real(video_path):
+    """Sanity-check the render before spending an upload attempt on it —
+    a missing, empty, or zero-duration file fails fast with a clear reason
+    instead of crashing deep inside the YouTube client or uploading garbage."""
+    if not os.path.exists(video_path):
+        raise RuntimeError(f"Build didn't produce a video file at {video_path}")
+    if os.path.getsize(video_path) < 1024:
+        raise RuntimeError(f"{video_path} is suspiciously small ({os.path.getsize(video_path)} bytes) — likely a broken render")
+
+    import subprocess
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", video_path],
+        capture_output=True, text=True,
+    )
+    try:
+        duration = float(probe.stdout.strip())
+    except (ValueError, TypeError):
+        raise RuntimeError(f"ffprobe couldn't read a duration from {video_path} — file is likely corrupt")
+    if duration < 1.0:
+        raise RuntimeError(f"{video_path} has a {duration:.2f}s duration — too short to be a real video")
+
+
 def upload_video(video_path, metadata, privacy_status=None):
     privacy_status = privacy_status or os.environ.get("VIDEO_PRIVACY_STATUS", "public")
     from googleapiclient.http import MediaFileUpload
+    from googleapiclient.errors import HttpError
+
+    _check_video_is_real(video_path)
 
     youtube = get_authenticated_service()
     body = {
@@ -103,11 +128,27 @@ def upload_video(video_path, metadata, privacy_status=None):
     }
     media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
+
     response = None
+    attempt = 0
+    max_attempts = 5
     while response is None:
-        status, response = request.next_chunk()
-        if status:
-            print(f"Uploaded {int(status.progress() * 100)}%")
+        try:
+            status, response = request.next_chunk()
+            if status:
+                print(f"Uploaded {int(status.progress() * 100)}%")
+        except HttpError as e:
+            # 5xx and 429 are worth retrying (transient); 4xx like a bad
+            # request or expired auth won't fix itself on retry.
+            retryable = e.resp.status in (429, 500, 502, 503, 504)
+            attempt += 1
+            if not retryable or attempt >= max_attempts:
+                raise
+            wait = min(2 ** attempt, 30)
+            print(f"Upload hiccup (HTTP {e.resp.status}), retrying in {wait}s... (attempt {attempt}/{max_attempts})")
+            import time
+            time.sleep(wait)
+
     print(f"Done: https://youtube.com/watch?v={response['id']}")
     return response["id"]
 

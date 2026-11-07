@@ -13,8 +13,14 @@ from script_tools import load_script
 from tts import generate as tts_generate
 from motion import render_scene
 
-AUDIO_DIR = "audio"
-OUTPUT_DIR = "output"
+# Anchored to the repo root (not the shell's cwd) because the GitHub Actions
+# workflow does `cd src` before each step — with a plain relative "output",
+# this step would write to src/output/ while the upload step (also `cd src`,
+# then ../output/...) and the artifact-backup step (repo root, output/...)
+# would both look in a different, empty directory.
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+AUDIO_DIR = os.path.join(_BASE_DIR, "..", "audio")
+OUTPUT_DIR = os.path.join(_BASE_DIR, "..", "output")
 
 
 def build(script_path, out_name=None, tts_engine=None, theme=None):
