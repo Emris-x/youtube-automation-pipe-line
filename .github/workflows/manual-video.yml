@@ -29,24 +29,17 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Install system dependencies (cached)
-        uses: awalsh128/cache-apt-pkgs-action@v1.4.3
-        with:
-          packages: ffmpeg fonts-firacode fonts-dejavu-core
-          version: 1.0
-
-      - name: Verify ffmpeg actually works after a cache restore
+      - name: Install system dependencies
         run: |
-          # A package restored from the apt cache can skip steps a real
-          # install runs (ldconfig, fontconfig cache rebuild), leaving a
-          # binary that's "installed" but fails at runtime with exit 127
-          # (dynamic linker can't find its shared libs). Refresh both
-          # caches, then fail fast here instead of deep inside the build
-          # if ffmpeg still doesn't actually run.
-          sudo ldconfig
-          fc-cache -f >/dev/null 2>&1 || true
-          ffmpeg -version
-          ffprobe -version
+          # Tried caching this via a third-party action to save ~20-40s;
+          # it restored ffmpeg without libblas.so.3 (a transitive dep),
+          # breaking every build with a cryptic exit 127 deep in the
+          # pipeline. Not worth the risk for the time saved — plain
+          # apt-get is slower but always correct.
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-firacode fonts-dejavu-core
+          ffmpeg -version >/dev/null
+          ffprobe -version >/dev/null
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
