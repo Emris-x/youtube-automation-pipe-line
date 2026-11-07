@@ -64,6 +64,7 @@ jobs:
         env:
           GRACE_TOKEN_URL: ${{ secrets.GRACE_TOKEN_URL }}
           GRACE_API_SECRET: ${{ secrets.GRACE_API_SECRET }}
+          YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
           VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
         run: |
           cd src

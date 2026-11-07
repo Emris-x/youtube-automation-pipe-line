@@ -69,7 +69,12 @@ def get_authenticated_service():
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
+        if creds and creds.refresh_token:
+            # A token loaded from the authorized_user JSON GRACE wrote has a
+            # refresh_token but no access token yet, so `expired` is False
+            # (there's no expiry to compare against) even though it still
+            # needs refreshing before first use. Refresh whenever a
+            # refresh_token is present, not only when expired is True.
             creds.refresh(Request())
         else:
             # No valid token and nothing to refresh -> needs the one-time
