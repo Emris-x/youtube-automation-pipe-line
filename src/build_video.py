@@ -57,10 +57,14 @@ def build(script_path, out_name=None, tts_engine=None, theme=None):
 
         print(f"[{sid}] muxing audio + video...")
         final_scene = os.path.join(OUTPUT_DIR, f"{out_name}_{sid}.mp4")
-        subprocess.run([
-            "ffmpeg", "-y", "-i", silent_video, "-i", audio_path,
-            "-c:v", "copy", "-c:a", "aac", "-shortest", final_scene,
-        ], check=True, capture_output=True)
+        try:
+            subprocess.run([
+                "ffmpeg", "-y", "-i", silent_video, "-i", audio_path,
+                "-c:v", "copy", "-c:a", "aac", "-shortest", final_scene,
+            ], check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            print(f"[{sid}] ffmpeg mux failed (exit {e.returncode}):\n{e.stderr.decode(errors='replace')}")
+            raise
         scene_clips.append(final_scene)
         os.remove(silent_video)
 
@@ -72,10 +76,14 @@ def build(script_path, out_name=None, tts_engine=None, theme=None):
 
     final_path = os.path.join(OUTPUT_DIR, f"{out_name}.mp4")
     print("Concatenating scenes into final video...")
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
-        "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", final_path,
-    ], check=True, capture_output=True)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+            "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", final_path,
+        ], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[concat] ffmpeg failed (exit {e.returncode}):\n{e.stderr.decode(errors='replace')}")
+        raise
 
     # cleanup intermediate scene files
     for clip in scene_clips:

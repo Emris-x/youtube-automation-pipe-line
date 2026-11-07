@@ -139,10 +139,14 @@ def _generate_espeak(text, out_audio, out_timing):
         json.dump(boundaries, f, indent=2)
 
     if out_audio.endswith(".mp3") and wav_path != out_audio:
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", wav_path, "-codec:a", "libmp3lame", "-qscale:a", "2", out_audio],
-            check=True, capture_output=True,
-        )
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", wav_path, "-codec:a", "libmp3lame", "-qscale:a", "2", out_audio],
+                check=True, capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"[tts] ffmpeg mp3 conversion failed (exit {e.returncode}):\n{e.stderr.decode(errors='replace')}")
+            raise
     return boundaries
 
 

@@ -35,6 +35,19 @@ jobs:
           packages: ffmpeg fonts-firacode fonts-dejavu-core
           version: 1.0
 
+      - name: Verify ffmpeg actually works after a cache restore
+        run: |
+          # A package restored from the apt cache can skip steps a real
+          # install runs (ldconfig, fontconfig cache rebuild), leaving a
+          # binary that's "installed" but fails at runtime with exit 127
+          # (dynamic linker can't find its shared libs). Refresh both
+          # caches, then fail fast here instead of deep inside the build
+          # if ffmpeg still doesn't actually run.
+          sudo ldconfig
+          fc-cache -f >/dev/null 2>&1 || true
+          ffmpeg -version
+          ffprobe -version
+
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 

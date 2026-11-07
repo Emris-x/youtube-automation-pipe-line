@@ -321,11 +321,17 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
 
         img.save(os.path.join(frame_dir, f"f{f:05d}.png"))
 
-    subprocess.run([
-        "ffmpeg", "-y", "-framerate", str(fps),
-        "-i", os.path.join(frame_dir, "f%05d.png"),
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", out_path,
-    ], check=True, capture_output=True)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-framerate", str(fps),
+            "-i", os.path.join(frame_dir, "f%05d.png"),
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", out_path,
+        ], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        # capture_output hides ffmpeg's real error by default — surface it
+        # instead of letting the caller see only "exit status 1/127".
+        print(f"[motion] ffmpeg failed (exit {e.returncode}):\n{e.stderr.decode(errors='replace')}")
+        raise
 
     for fn in os.listdir(frame_dir):
         os.remove(os.path.join(frame_dir, fn))
