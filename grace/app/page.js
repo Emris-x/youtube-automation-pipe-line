@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const GREEN = "#3cff8c";
 const DIM = "#2c7a5a";
@@ -28,6 +28,7 @@ export default function Page() {
   const [tab, setTab] = useState("create");
   const [history, setHistory] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [graceTimeItem, setGraceTimeItem] = useState(null); // item currently shown full-screen, or null
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("grace_pw") : null;
@@ -207,6 +208,14 @@ export default function Page() {
                     build log →
                   </a>
                 )}
+                {(item.status === "running" || item.status === "queued") && (
+                  <button
+                    onClick={() => setGraceTimeItem(item)}
+                    style={{ background: "none", border: "none", color: GREEN, fontFamily: "inherit", fontSize: 13, cursor: "pointer", padding: 0 }}
+                  >
+                    grace time →
+                  </button>
+                )}
                 {item.video_url && (
                   <a href={item.video_url} target="_blank" rel="noreferrer" style={{ color: GREEN }}>
                     watch on YouTube →
@@ -217,7 +226,126 @@ export default function Page() {
           ))}
         </div>
       )}
+
+      {graceTimeItem && (
+        <GraceTimeOverlay item={graceTimeItem} onClose={() => setGraceTimeItem(null)} />
+      )}
     </Center>
+  );
+}
+
+/** Full-screen Matrix-style code-rain overlay shown while a build runs,
+ * purely aesthetic — polls for real status underneath so it still tells
+ * you when the build actually finishes. */
+function GraceTimeOverlay({ item, onClose }) {
+  const canvasRef = useRef(null);
+  const [current, setCurrent] = useState(item);
+  const [elapsed, setElapsed] = useState(0);
+
+  // rain animation
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    let raf;
+    let cols, drops;
+    const chars = "01{}[]<>/\\;:=+-#$%&*GRACE".split("");
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      cols = Math.floor(canvas.width / 22);
+      drops = new Array(cols).fill(0).map(() => Math.random() * -50);
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    function frame() {
+      ctx.fillStyle = "rgba(6, 10, 8, 0.15)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = GREEN;
+      ctx.font = "18px monospace";
+      for (let i = 0; i < cols; i++) {
+        const ch = chars[Math.floor(Math.random() * chars.length)];
+        ctx.fillText(ch, i * 22, drops[i] * 22);
+        if (drops[i] * 22 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+        drops[i]++;
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+
+  // elapsed-time ticker
+  useEffect(() => {
+    const startedAt = current.timestamp ? new Date(current.timestamp).getTime() : Date.now();
+    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [current.timestamp]);
+
+  // poll real status while still running/queued
+  useEffect(() => {
+    if (current.status !== "running" && current.status !== "queued") return;
+    const id = setInterval(() => {
+      authedFetch("/api/history")
+        .then((r) => r.json())
+        .then((d) => {
+          const match = (d.history || []).find((h) => String(h.run_id) === String(item.run_id));
+          if (match) setCurrent(match);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(id);
+  }, [current.status, item.run_id]);
+
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
+  const done = current.status === "uploaded" || current.status === "failed";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#060a08", zIndex: 1000 }}>
+      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0 }} />
+      <button
+        onClick={onClose}
+        style={{ position: "absolute", top: 16, right: 16, ...buttonStyle, padding: "6px 14px", background: "#060a08" }}
+      >
+        close ×
+      </button>
+      <div
+        style={{
+          position: "absolute", left: 0, right: 0, bottom: 0,
+          padding: "18px 20px calc(18px + env(safe-area-inset-bottom))",
+          background: "linear-gradient(transparent, #060a08 55%)",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ color: "#eafff2", fontWeight: 600, marginBottom: 4 }}>{current.title || "Untitled"}</div>
+        <div style={{ color: STATUS_COLOR[current.status] || DIM, fontSize: 14 }}>
+          {done ? STATUS_LABEL[current.status] : `building... ${mm}:${ss}`}
+        </div>
+        {done && (
+          <div style={{ marginTop: 8 }}>
+            {current.video_url && (
+              <a href={current.video_url} target="_blank" rel="noreferrer" style={{ color: GREEN, fontSize: 13 }}>
+                watch on YouTube →
+              </a>
+            )}
+            {current.status === "failed" && (
+              <span style={{ color: "#ff8c8c", fontSize: 13 }}>
+                {current.failed_step ? `failed at: ${current.failed_step}` : "failed"}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

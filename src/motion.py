@@ -33,10 +33,16 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
+import stickman
+import icons as icon_lib
+
 W, H = 1080, 1920
 FPS = 30
 
 THEME = os.environ.get("VIDEO_THEME", "terminal")  # "terminal" (default) | "gradient"
+# Stick-figure character + contextual keyword icon, layered on top of the
+# existing abstract motif. "off" restores the old backdrop-only look.
+CHARACTERS = os.environ.get("VIDEO_CHARACTERS", "on") != "off"
 
 
 @functools.lru_cache(maxsize=8)
@@ -287,6 +293,23 @@ def _motif_terminal(draw, visual, t):
         draw.arc([cx - r, cy - r, cx + r, cy + r], 320, 360, fill=TERM_AMBER, width=6)
 
 
+def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name):
+    """Stick figure acting out the scene's pose, plus a small badge icon for
+    whatever the sentence is actually about, when one was detected."""
+    cx, cy = W / 2, H * 0.58
+    talking = stickman.is_speaking(boundaries, t) if boundaries else False
+    stickman.draw_stickman(draw, cx, cy, 62, pose, t, talking, TERM_GREEN, TERM_GREEN_DIM)
+
+    if icon_name:
+        bx, by, br = W * 0.80, H * 0.20, 78
+        pulse = 1.0 + 0.04 * math.sin(t * 2.2)
+        draw.ellipse(
+            [bx - br * pulse, by - br * pulse, bx + br * pulse, by + br * pulse],
+            outline=TERM_GRID, width=3,
+        )
+        icon_lib.draw_icon(draw, icon_name, bx, by, br * 0.55, TERM_GREEN, font=_font(44, FONT_MONO_BOLD))
+
+
 def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
     theme = theme or THEME
     duration = boundaries[-1]["offset_s"] + boundaries[-1]["duration_s"] if boundaries else 3.0
@@ -296,6 +319,8 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
     os.makedirs(frame_dir, exist_ok=True)
 
     accent = GRADIENT_ACCENTS.get(scene["visual"], (255, 255, 255))
+    pose = stickman.pose_for_scene(scene) if CHARACTERS else None
+    icon_name = icon_lib.pick_icon_for_text(scene.get("text", "")) if CHARACTERS else None
 
     for f in range(n_frames):
         t = f / fps
@@ -310,6 +335,8 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
             img = _terminal_bg(t)
             draw = ImageDraw.Draw(img)
             _motif_terminal(draw, scene["visual"], t)
+            if CHARACTERS:
+                _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name)
             _terminal_header(draw, t, scene.get("terminal_label", "breach_report.sh"))
             if boundaries:
                 _draw_caption_terminal(draw, active_idx, boundaries, t)

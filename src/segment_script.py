@@ -13,6 +13,8 @@ import json
 import re
 import sys
 
+from icons import matched_keywords
+
 MID_VISUALS = ["icon_sequence", "bar_chart_animate", "loop_animation", "data_flow", "bullet_reveal"]
 
 # Matches a leading stage-direction label like "Scene one:", "Scene 3 -",
@@ -68,7 +70,7 @@ def text_to_script(raw_text, title=None, terminal_label="script.log"):
         else:
             sid = f"point{i}"
             visual = MID_VISUALS[(i - 1) % len(MID_VISUALS)]
-        scenes.append({"id": sid, "text": para, "visual": visual, "keywords": []})
+        scenes.append({"id": sid, "text": para, "visual": visual, "keywords": matched_keywords(para)})
 
     first_line = paragraphs[0][:70].rsplit(" ", 1)[0]
     return {
