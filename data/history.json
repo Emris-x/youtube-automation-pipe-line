@@ -1,5 +1,15 @@
 [
   {
+    "run_id": "42414265559",
+    "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42414265559",
+    "timestamp": "2026-11-07T21:08:57.508583+00:00",
+    "title": "Day Of Black Net",
+    "status": "uploaded",
+    "failed_step": null,
+    "error": null,
+    "video_url": "https://youtube.com/watch?v=isdQFsCyRq8"
+  },
+  {
     "run_id": "42413544280",
     "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42413544280",
     "timestamp": "2026-11-07T20:59:49.464569+00:00",
