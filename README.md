@@ -22,44 +22,59 @@ scripts/
   daily-video.yml        the schedule that runs it all automatically
 ```
 
+## GRACE — the phone app
+
+`grace/` is a small Next.js PWA, deployed to Vercel at
+**https://grace-app-emris-xs-projects.vercel.app** (also aliased to
+grace-app-three.vercel.app), linked to this repo so every push to `main`
+redeploys it. It's the normal way to use this project from a phone:
+
+1. Open the URL, unlock with the password (`GRACE_APP_PASSWORD`, set in Vercel)
+2. Tap **connect YouTube** once — Google login happens right there, no
+   desktop needed. GRACE writes the resulting token straight into this
+   repo's `YOUTUBE_TOKEN_B64` secret itself.
+3. Paste a script (blank line between each scene), tap **./create_video** —
+   that fires the `manual-video.yml` workflow below and hands back a link
+   to watch it build and upload.
+
+GRACE needs its own one-time setup, below — once that's done, everything
+after is phone-only, no computer required for any step.
+
 ## One-time setup (has to be done by you — can't be automated)
 
-### 1. Anthropic API key (for script writing)
-- console.anthropic.com → create an API key
-- Repo → Settings → Secrets and variables → Actions → New repository secret
-  → name `ANTHROPIC_API_KEY`, paste the key
-
-### 2. YouTube upload access
-This is the fiddly one because Google requires an actual browser login once.
-
+### 1. Google OAuth client (for GRACE's "connect YouTube" button)
 1. console.cloud.google.com → new project → enable **YouTube Data API v3**
 2. OAuth consent screen → External → add your own Google account as a test user
-3. Credentials → Create OAuth client ID → **Desktop app** → download the JSON,
-   save it as `client_secret.json` in this project's root (on your own
-   computer, NOT committed to git — it's in `.gitignore`)
-4. On your computer, with Python installed:
-   ```
-   pip install -r requirements.txt
-   python src/upload.py --authorize
-   ```
-   This opens a browser, you log in and approve, and it saves `token.json`
-   next to `client_secret.json`.
-5. Turn both into secrets so GitHub Actions can use them without a browser:
-   ```
-   base64 -i client_secret.json | tr -d '\n'   # copy this value
-   base64 -i token.json | tr -d '\n'            # copy this value
-   ```
-   Add as repo secrets: `YOUTUBE_CLIENT_SECRET_B64`, `YOUTUBE_TOKEN_B64`
+3. Credentials → Create OAuth client ID → **Web application** (not Desktop)
+   → Authorized redirect URI:
+   `https://grace-app-emris-xs-projects.vercel.app/api/auth/google/callback`
+4. Send me the Client ID and Client Secret it gives you — I'll set them as
+   `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` in GRACE's Vercel project.
 
-**Known friction point, stated plainly:** while your Google Cloud OAuth
-consent screen is in "Testing" status, Google expires refresh tokens after
-~7 days — which would quietly break the automation every week. If uploads
-start failing after about a week with an auth error, that's what's
-happening. Fix: submit the OAuth consent screen for verification (Google
-walks you through it; needs a short demo + privacy policy link). I can help
-with that step when you hit it — flagging it now so it's not a surprise.
+**Known friction point, stated plainly:** while the OAuth consent screen is
+in "Testing" status, Google expires the connection after ~7 days — you'd
+need to tap "connect YouTube" again weekly. Fix: submit the consent screen
+for verification (Google walks you through it; needs a short demo +
+privacy policy link). I can help with that when you get there.
 
-### 3. (Optional, recommended once you've seen a sample) ElevenLabs for a real voice
+### 2. A GitHub token (so GRACE can trigger builds and save the YouTube connection)
+1. github.com → Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens → Generate new token
+2. Repository access → Only select repositories → `youtube-automation-pipe-line`
+3. Permissions → **Actions: Read and write**, **Secrets: Read and write**
+4. Send me the token — I'll set it as `GITHUB_PAT` in GRACE's Vercel project.
+
+### 3. Pick a password for GRACE itself
+Any phone-typeable password — tell me what you want and I'll set it as
+`GRACE_APP_PASSWORD`. (Skippable, but then the app has no gate at all.)
+
+### 4. (Optional) Anthropic API key — only if you want auto-written scripts back
+Since you're writing scripts yourself, this isn't needed. If you change
+your mind later: console.anthropic.com → create a key → add as the
+`ANTHROPIC_API_KEY` repo secret → the original `daily-video.yml` schedule
+(topic queue → AI script → video, no typing) becomes usable again.
+
+### 5. (Optional, recommended once you've heard a sample) ElevenLabs for a real voice
 - elevenlabs.io → free tier API key
 - Add as repo secret `ELEVENLABS_API_KEY` — `tts.py` picks it up automatically
   and uses it instead of edge-tts. Until then, edge-tts (free, no key) is
