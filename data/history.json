@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "run_id": "42412917036",
+    "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42412917036",
+    "timestamp": "2026-11-07T20:51:54.015788+00:00",
+    "title": "Day of Black Net",
+    "status": "failed",
+    "failed_step": "upload",
+    "error": "[Errno 2] No such file or directory: 'client_secret.json'",
+    "video_url": null
+  }
+]
