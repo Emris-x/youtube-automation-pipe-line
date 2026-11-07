@@ -1,0 +1,12 @@
+{
+  "name": "GRACE",
+  "short_name": "GRACE",
+  "description": "Script in, video out.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#060a08",
+  "theme_color": "#060a08",
+  "icons": [
+    { "src": "/icon.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
