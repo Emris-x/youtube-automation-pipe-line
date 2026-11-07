@@ -1,5 +1,15 @@
 [
   {
+    "run_id": "42416600574",
+    "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42416600574",
+    "timestamp": "2026-11-07T21:39:56.757355+00:00",
+    "title": "One wrong command. Facebook, Instagram, and WhatsApp vanished from",
+    "status": "uploaded",
+    "failed_step": null,
+    "error": null,
+    "video_url": "https://youtube.com/watch?v=8ghl3v5snvM"
+  },
+  {
     "run_id": "42415785954",
     "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42415785954",
     "timestamp": "2026-11-07T21:25:40.787398+00:00",
