@@ -2,6 +2,9 @@ export const metadata = {
   title: "GRACE",
   description: "Write a script, tap create, it uploads to YouTube.",
   manifest: "/manifest.json",
+};
+
+export const viewport = {
   themeColor: "#060a08",
 };
 

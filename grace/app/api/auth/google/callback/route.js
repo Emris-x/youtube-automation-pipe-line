@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { setRepoSecret } from "../../../../../lib/github";
+import { passwordMatches } from "../../../../../lib/auth";
 
 /**
  * Google redirects here with ?code=... after Emris approves access.
@@ -12,7 +13,11 @@ export async function GET(req) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const error = url.searchParams.get("error");
+  const state = url.searchParams.get("state") || "";
 
+  if (!passwordMatches(state)) {
+    return htmlResponse(`Wrong or missing password — this link wasn't started from GRACE itself.`, 401);
+  }
   if (error) {
     return htmlResponse(`Google said: ${error}. <a href="/">Try again</a>`, 400);
   }

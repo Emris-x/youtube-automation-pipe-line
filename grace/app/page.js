@@ -121,7 +121,7 @@ export default function Page() {
             {ytConnected === null && <span style={{ color: DIM }}>checking YouTube connection...</span>}
             {ytConnected === true && <span style={{ color: GREEN }}>✓ YouTube connected</span>}
             {ytConnected === false && (
-              <a href="/api/auth/google/start" style={{ ...buttonStyle, display: "inline-block", textDecoration: "none" }}>
+              <a href={`/api/auth/google/start?pw=${encodeURIComponent(pw)}`} style={{ ...buttonStyle, display: "inline-block", textDecoration: "none" }}>
                 connect YouTube
               </a>
             )}

@@ -21,8 +21,13 @@ import json
 import os
 import sys
 
-TOPICS_PATH = "scripts/topics.json"
-OUT_DIR = "scripts"
+# Anchored to the repo root, not the shell's cwd — same reasoning as
+# build_video.py's AUDIO_DIR/OUTPUT_DIR fix. Both workflows `cd src` before
+# running this, so a plain "scripts/..." would look for src/scripts/,
+# which doesn't exist.
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TOPICS_PATH = os.path.join(_BASE_DIR, "..", "scripts", "topics.json")
+OUT_DIR = os.path.join(_BASE_DIR, "..", "scripts")
 
 VALID_VISUALS = [
     "title_card", "bullet_reveal", "icon_sequence", "bar_chart_animate",
