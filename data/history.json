@@ -1,5 +1,15 @@
 [
   {
+    "run_id": "42415239709",
+    "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42415239709",
+    "timestamp": "2026-11-07T21:19:18.008620+00:00",
+    "title": "\"One software update. Eight and a half million Windows computers",
+    "status": "failed",
+    "failed_step": "build",
+    "error": null,
+    "video_url": null
+  },
+  {
     "run_id": "42414265559",
     "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42414265559",
     "timestamp": "2026-11-07T21:08:57.508583+00:00",
