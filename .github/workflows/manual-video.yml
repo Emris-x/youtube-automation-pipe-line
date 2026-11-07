@@ -1,0 +1,63 @@
+name: Manual Video (from GRACE)
+
+on:
+  workflow_dispatch:
+    inputs:
+      script_text:
+        description: "Full script, scenes separated by a blank line"
+        type: string
+        required: true
+      title:
+        description: "Video title (optional — first line used if blank)"
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-firacode fonts-dejavu-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Turn pasted script into a scene JSON
+        run: |
+          cd src
+          printf '%s' "${{ github.event.inputs.script_text }}" | python segment_script.py ../scripts/manual_video.json
+
+      - name: Build video
+        run: |
+          cd src
+          python build_video.py ../scripts/manual_video.json
+
+      - name: Upload to YouTube
+        env:
+          GRACE_TOKEN_URL: ${{ secrets.GRACE_TOKEN_URL }}
+          GRACE_API_SECRET: ${{ secrets.GRACE_API_SECRET }}
+          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
+        run: |
+          cd src
+          python upload.py --video ../output/manual_video.mp4 --metadata ../scripts/manual_video.json
+
+      - name: Upload video as a workflow artifact too (backup)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-${{ github.run_id }}
+          path: output/*.mp4
+          retention-days: 14
+          if-no-files-found: ignore

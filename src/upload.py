@@ -36,11 +36,31 @@ def _materialize_from_env(path, b64_env_var):
             f.write(base64.b64decode(b64).decode("utf-8"))
 
 
+def _get_token_from_grace():
+    """GRACE (the companion app) owns the Google OAuth flow and keeps the
+    refresh token server-side, so the Action never needs client_secret.json
+    or token.json at all — it just asks GRACE for a fresh access token each
+    run. Preferred path when GRACE_TOKEN_URL + GRACE_API_SECRET are set."""
+    url = os.environ.get("GRACE_TOKEN_URL")
+    secret = os.environ.get("GRACE_API_SECRET")
+    if not (url and secret):
+        return None
+    import requests
+    resp = requests.get(url, headers={"Authorization": f"Bearer {secret}"}, timeout=15)
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+
 def get_authenticated_service():
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
+
+    access_token = _get_token_from_grace()
+    if access_token:
+        creds = Credentials(token=access_token)
+        return build("youtube", "v3", credentials=creds)
 
     _materialize_from_env(CLIENT_SECRET_FILE, "YOUTUBE_CLIENT_SECRET_B64")
     _materialize_from_env(TOKEN_FILE, "YOUTUBE_TOKEN_B64")
