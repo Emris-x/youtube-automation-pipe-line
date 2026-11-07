@@ -1,0 +1,55 @@
+{
+  "topic": "How Does ChatGPT Actually Know What To Say?",
+  "niche": "tech_ai_explainer",
+  "title": "How ChatGPT Actually Decides What To Say (No, It's Not Thinking)",
+  "scenes": [
+    {
+      "id": "hook",
+      "text": "ChatGPT has never had an original thought in its life. Not one. And once you see why, you'll never look at AI the same way again.",
+      "visual": "title_card",
+      "keywords": ["chatgpt", "brain", "question mark"]
+    },
+    {
+      "id": "setup",
+      "text": "Here's the thing everyone gets wrong. You type a question, it types back an answer, so it feels like it understood you. It didn't. It did math.",
+      "visual": "bullet_reveal",
+      "keywords": ["typing", "math", "numbers"]
+    },
+    {
+      "id": "point1",
+      "text": "Step one: your words get chopped into chunks called tokens. 'Understanding' might become two tokens. The model never sees English. It sees numbers.",
+      "visual": "icon_sequence",
+      "keywords": ["tokens", "chopping", "numbers grid"]
+    },
+    {
+      "id": "point2",
+      "text": "Step two: for every single token, the model calculates the probability of every possible next token. All at once. Out of over a hundred thousand options.",
+      "visual": "bar_chart_animate",
+      "keywords": ["probability", "bar chart", "options"]
+    },
+    {
+      "id": "point3",
+      "text": "Step three: it picks one, usually not even the highest probability one, and does the entire calculation again. One word at a time. That's why it sometimes pauses.",
+      "visual": "loop_animation",
+      "keywords": ["loop", "repeat", "word by word"]
+    },
+    {
+      "id": "point4",
+      "text": "So where does the 'knowledge' come from? Training. It read a huge chunk of the internet and adjusted billions of internal numbers until its guesses matched real text.",
+      "visual": "data_flow",
+      "keywords": ["internet", "data flow", "training"]
+    },
+    {
+      "id": "payoff",
+      "text": "So it's not answering you. It's finishing your sentence in the most statistically convincing way it can. That's the whole trick.",
+      "visual": "reveal_text",
+      "keywords": ["reveal", "lightbulb"]
+    },
+    {
+      "id": "cta",
+      "text": "If that blew your mind, follow for one of these every week. Next one: why AI sometimes just makes things up.",
+      "visual": "subscribe_animation",
+      "keywords": ["subscribe", "follow", "next video"]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+audio/*
+output/*
+!audio/.gitkeep
+!output/.gitkeep
+client_secret.json
+token.json
+*.mp3
+*.mp4
+*.wav

@@ -1,0 +1,67 @@
+name: Daily Video
+
+on:
+  schedule:
+    # 15:00 UTC daily = 16:00 WAT (Africa/Lagos). Change to taste.
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload to YouTube? (false = build only, for testing)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write  # so the job can commit the updated topics.json queue back
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-firacode fonts-dejavu-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline (generate -> build -> upload)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          YOUTUBE_CLIENT_SECRET_B64: ${{ secrets.YOUTUBE_CLIENT_SECRET_B64 }}
+          YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
+          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
+        run: |
+          cd src
+          if [ "${{ github.event.inputs.upload }}" = "false" ]; then
+            python run_pipeline.py --no-upload
+          else
+            python run_pipeline.py
+          fi
+
+      - name: Upload video as a workflow artifact (backup / manual review)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-${{ github.run_id }}
+          path: output/*.mp4
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Commit updated topic queue
+        if: always()
+        run: |
+          git config user.name "youtube-automation-bot"
+          git config user.email "actions@github.com"
+          git add scripts/topics.json scripts/video_*.json
+          git diff --staged --quiet || git commit -m "Mark topic consumed + add generated script [skip ci]"
+          git push

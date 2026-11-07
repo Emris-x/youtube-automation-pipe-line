@@ -1,0 +1,24 @@
+{
+  "comment": "Queue of real, documented tech incidents for the 'how it actually broke' series. generate_script.py pops the first status:pending topic, generates a script, and flips it to status:done. Add more topics anytime — these are proven-interesting (real stakes, real consequences), which is the whole point of the angle: not generic AI definitions, real stories.",
+  "series_format": "How It Actually Broke",
+  "topics": [
+    {"id": "t001", "title": "The CrowdStrike update that bricked 8.5 million Windows PCs worldwide (2024)", "status": "pending"},
+    {"id": "t002", "title": "How one bad BGP update deleted Facebook, Instagram and WhatsApp from the internet for 6 hours (2021)", "status": "pending"},
+    {"id": "t003", "title": "The Equifax breach: how 147 million people's data leaked from one unpatched server (2017)", "status": "pending"},
+    {"id": "t004", "title": "SolarWinds: how hackers poisoned a routine software update and spied on the US government for months (2020)", "status": "pending"},
+    {"id": "t005", "title": "Colonial Pipeline: how one leaked password shut down fuel for the entire US East Coast (2021)", "status": "pending"},
+    {"id": "t006", "title": "The AWS outage that broke half the internet from one region (us-east-1)", "status": "pending"},
+    {"id": "t007", "title": "WannaCry: the ransomware worm that used a leaked NSA exploit to cripple hospitals worldwide (2017)", "status": "pending"},
+    {"id": "t008", "title": "Cloudflare's global outage caused by one bad regular expression (2019)", "status": "pending"},
+    {"id": "t009", "title": "Knight Capital: how a software deploy mistake lost $440 million in 45 minutes (2012)", "status": "pending"},
+    {"id": "t010", "title": "Heartbleed: the two-year-old typo in OpenSSL that put half the internet's passwords at risk (2014)", "status": "pending"},
+    {"id": "t011", "title": "The Mirai botnet: how hacked security cameras took down Twitter, Netflix and Reddit at once (2016)", "status": "pending"},
+    {"id": "t012", "title": "Log4Shell: the one-line Java logging bug that threatened millions of servers overnight (2021)", "status": "pending"},
+    {"id": "t013", "title": "Capital One: how a misconfigured firewall exposed 100 million credit applications (2019)", "status": "pending"},
+    {"id": "t014", "title": "Target's 2013 breach: how hackers got in through the HVAC contractor's login", "status": "pending"},
+    {"id": "t015", "title": "Boeing 737 MAX: how one software system (MCAS) was linked to two fatal crashes", "status": "pending"},
+    {"id": "t016", "title": "Stuxnet: the world's first cyberweapon, hidden inside a USB stick, built to physically destroy machines", "status": "pending"},
+    {"id": "t017", "title": "The British Airways outage that grounded every flight from one power supply mistake (2017)", "status": "pending"},
+    {"id": "t018", "title": "GitHub's 1.35 Tbps DDoS attack: the biggest the internet had ever seen at the time (2018)", "status": "pending"}
+  ]
+}
