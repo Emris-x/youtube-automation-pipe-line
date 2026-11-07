@@ -1,5 +1,7 @@
 name: Manual Video (from GRACE)
 
+run-name: ${{ github.event.inputs.title != '' && github.event.inputs.title || 'GRACE video' }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -13,7 +15,7 @@ on:
         required: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-and-publish:
@@ -35,16 +37,30 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Turn pasted script into a scene JSON
+        id: segment
+        continue-on-error: true
+        env:
+          # Passed as an env var, not interpolated into the shell command —
+          # a pasted script containing quotes, backticks or $ would otherwise
+          # break (or inject into) the generated shell line.
+          SCRIPT_TEXT: ${{ github.event.inputs.script_text }}
+          VIDEO_TITLE: ${{ github.event.inputs.title }}
         run: |
           cd src
-          printf '%s' "${{ github.event.inputs.script_text }}" | python segment_script.py ../scripts/manual_video.json
+          python segment_script.py ../scripts/manual_video.json
 
       - name: Build video
+        id: build
+        if: steps.segment.outcome == 'success'
+        continue-on-error: true
         run: |
           cd src
           python build_video.py ../scripts/manual_video.json
 
       - name: Upload to YouTube
+        id: upload
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
         env:
           GRACE_TOKEN_URL: ${{ secrets.GRACE_TOKEN_URL }}
           GRACE_API_SECRET: ${{ secrets.GRACE_API_SECRET }}
@@ -61,3 +77,35 @@ jobs:
           path: output/*.mp4
           retention-days: 14
           if-no-files-found: ignore
+
+      - name: Record result in history log
+        if: always()
+        env:
+          SEGMENT_OUTCOME: ${{ steps.segment.outcome }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VIDEO_TITLE: ${{ github.event.inputs.title }}
+        run: |
+          cd src
+          python log_result.py
+
+      - name: Commit history log
+        if: always()
+        run: |
+          git config user.name "grace-bot"
+          git config user.email "grace-bot@users.noreply.github.com"
+          git add data/history.json
+          if git diff --cached --quiet; then
+            echo "No history changes to commit."
+          else
+            git commit -m "Log GRACE run ${{ github.run_id }}"
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push origin main && break
+              sleep $((i * 3))
+            done
+          fi
+
+      - name: Fail the run if a build step failed
+        if: steps.segment.outcome == 'failure' || steps.build.outcome == 'failure' || steps.upload.outcome == 'failure'
+        run: exit 1

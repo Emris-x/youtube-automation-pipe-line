@@ -121,6 +121,17 @@ if __name__ == "__main__":
         import json
         with open(args.metadata) as f:
             meta = json.load(f)
-        upload_video(args.video, meta)
+        result_path = os.path.join(os.path.dirname(args.metadata) or ".", "last_result.json")
+        try:
+            video_id = upload_video(args.video, meta)
+            with open(result_path, "w") as f:
+                json.dump(
+                    {"video_id": video_id, "video_url": f"https://youtube.com/watch?v={video_id}"},
+                    f,
+                )
+        except Exception as e:
+            with open(result_path, "w") as f:
+                json.dump({"error": str(e)[:500]}, f)
+            raise
     else:
         parser.print_help()

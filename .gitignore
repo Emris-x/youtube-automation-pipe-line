@@ -6,6 +6,7 @@ output/*
 !output/.gitkeep
 client_secret.json
 token.json
+scripts/last_result.json
 *.mp3
 *.mp4
 *.wav

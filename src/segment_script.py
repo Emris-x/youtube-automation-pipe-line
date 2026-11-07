@@ -62,10 +62,15 @@ def text_to_script(raw_text, title=None, terminal_label="script.log"):
 
 
 if __name__ == "__main__":
-    # Reads script text from stdin, writes JSON to stdout (or to a file if given)
-    text = sys.stdin.read()
+    import os
+
+    # Prefer SCRIPT_TEXT env var (how GitHub Actions passes it, to dodge
+    # shell-quoting issues with pasted text) — fall back to stdin for local use.
+    env_text = os.environ.get("SCRIPT_TEXT")
+    text = env_text if env_text is not None else sys.stdin.read()
+    title = os.environ.get("VIDEO_TITLE") or None
     out_path = sys.argv[1] if len(sys.argv) > 1 else None
-    script = text_to_script(text)
+    script = text_to_script(text, title=title)
     if out_path:
         with open(out_path, "w") as f:
             json.dump(script, f, indent=2)

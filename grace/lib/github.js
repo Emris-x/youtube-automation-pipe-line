@@ -1,7 +1,7 @@
 import sodium from "libsodium-wrappers";
 
-const OWNER = process.env.GITHUB_OWNER || "Emris-x";
-const REPO = process.env.GITHUB_REPO || "youtube-automation-pipe-line";
+export const OWNER = process.env.GITHUB_OWNER || "Emris-x";
+export const REPO = process.env.GITHUB_REPO || "youtube-automation-pipe-line";
 const API = "https://api.github.com";
 
 function headers() {
@@ -58,6 +58,23 @@ export async function dispatchWorkflow(workflowFile, inputs) {
 export async function latestRun(workflowFile) {
   const data = await ghFetch(`/repos/${OWNER}/${REPO}/actions/workflows/${workflowFile}/runs?per_page=1`);
   return data.workflow_runs?.[0] || null;
+}
+
+/** Recent runs of a workflow, newest first — used for the History list. */
+export async function listRuns(workflowFile, perPage = 15) {
+  const data = await ghFetch(`/repos/${OWNER}/${REPO}/actions/workflows/${workflowFile}/runs?per_page=${perPage}`);
+  return data.workflow_runs || [];
+}
+
+/** Reads a small JSON file straight out of the repo (e.g. data/history.json). Returns null if missing/unparseable. */
+export async function getRepoJsonFile(path) {
+  try {
+    const file = await ghFetch(`/repos/${OWNER}/${REPO}/contents/${path}?ref=main`);
+    const text = Buffer.from(file.content, "base64").toString("utf-8");
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 export const REPO_URL = `https://github.com/${OWNER}/${REPO}`;
