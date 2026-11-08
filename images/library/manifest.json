@@ -121,6 +121,16 @@
       ],
       "title": "Space travle",
       "created_at": "2026-11-08T09:35:56.679Z"
+    },
+    {
+      "id": "img_0013",
+      "filename": "img_0013_point5.jpg",
+      "path": "images/library/img_0013_point5.jpg",
+      "tags": [
+        "point5"
+      ],
+      "title": "Space travle",
+      "created_at": "2026-11-08T09:36:09.594Z"
     }
   ]
 }
