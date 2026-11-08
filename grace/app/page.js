@@ -34,6 +34,12 @@ export default function Page() {
   const [necessitiesError, setNecessitiesError] = useState(null);
   const [uploadingSceneId, setUploadingSceneId] = useState(null);
   const [copiedSceneId, setCopiedSceneId] = useState(null);
+  const [createGate, setCreateGate] = useState(null); // {scenes, missing} when create is paused waiting on a decision
+
+  // a stale gate from a previous script shouldn't silently apply to a new one
+  useEffect(() => {
+    setCreateGate(null);
+  }, [script]);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("grace_pw") : null;
@@ -158,7 +164,39 @@ export default function Page() {
     setUnlocked(true);
   }
 
+  // Checks the picture library before actually starting a build, and pauses
+  // with a yes/no instead of building silently with scenes that have no
+  // picture. Call it again (e.g. from the gate's "continue anyway" button)
+  // once createGate is already set, and it skips straight to the real build.
   async function createVideo() {
+    if (!createGate) {
+      setBusy(true);
+      setStatus("Checking the picture library...");
+      try {
+        const res = await authedFetch("/api/necessities/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script_text: script }),
+        });
+        const data = await res.json();
+        if (res.ok && data.scenes) {
+          const missing = data.scenes.filter((s) => !s.covered);
+          if (missing.length > 0) {
+            setCreateGate({ scenes: data.scenes, missing });
+            setBusy(false);
+            setStatus(null);
+            return; // wait for the user to pick continue-anyway or go-upload
+          }
+        }
+        // every scene covered (or the check itself came back empty) -> build
+      } catch (e) {
+        // the coverage check itself failing shouldn't block a build the
+        // person explicitly asked to start -- fail open, just like before
+        // this feature existed.
+      }
+    }
+
+    setCreateGate(null);
     setBusy(true);
     setStatus("Sending to the pipeline...");
     setRunUrl(null);
@@ -244,6 +282,30 @@ export default function Page() {
           >
             {busy ? "working..." : "./create_video"}
           </button>
+
+          {createGate && (
+            <div style={{ border: "1px solid #ffd84a", borderRadius: 6, padding: "10px 12px", marginTop: 12 }}>
+              <p style={{ color: "#ffd84a", margin: 0, fontSize: 13 }}>
+                {createGate.scenes.length - createGate.missing.length}/{createGate.scenes.length} scenes have a picture
+                in the library. {createGate.missing.length} {createGate.missing.length === 1 ? "scene" : "scenes"} will
+                fall back to the old circle/bar look.
+              </p>
+              <div style={{ display: "flex", gap: 14, marginTop: 10 }}>
+                <button onClick={createVideo} style={{ ...buttonStyle, padding: "6px 12px", fontSize: 13 }}>
+                  continue anyway
+                </button>
+                <button
+                  onClick={() => {
+                    setCreateGate(null);
+                    setTab("necessities");
+                  }}
+                  style={{ ...buttonStyle, padding: "6px 12px", fontSize: 13, borderColor: DIM, color: DIM }}
+                >
+                  go upload pictures →
+                </button>
+              </div>
+            </div>
+          )}
 
           {status && (
             <p style={{ color: GREEN, marginTop: 16, whiteSpace: "pre-wrap" }}>
