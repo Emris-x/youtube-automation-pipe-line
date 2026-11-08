@@ -35,10 +35,12 @@ export default function Page() {
   const [uploadingSceneId, setUploadingSceneId] = useState(null);
   const [copiedSceneId, setCopiedSceneId] = useState(null);
   const [createGate, setCreateGate] = useState(null); // {scenes, missing} when create is paused waiting on a decision
+  const [pendingBuild, setPendingBuild] = useState(false); // true after "go upload pictures" -- shows a "continue build" button on necessities
 
-  // a stale gate from a previous script shouldn't silently apply to a new one
+  // a stale gate/pending-build from a previous script shouldn't silently apply to a new one
   useEffect(() => {
     setCreateGate(null);
+    setPendingBuild(false);
   }, [script]);
 
   useEffect(() => {
@@ -222,6 +224,16 @@ export default function Page() {
     setBusy(false);
   }
 
+  // Resumes a build that paused at the necessities gate. Clears the pending
+  // flag, switches to create (where the status/gate actually render), and
+  // re-runs the same check -- if pictures still aren't all there it shows
+  // the gate again instead of silently building, same as a fresh create.
+  function continueBuild() {
+    setPendingBuild(false);
+    setTab("create");
+    createVideo();
+  }
+
   if (!unlocked) {
     return (
       <Center>
@@ -297,6 +309,7 @@ export default function Page() {
                 <button
                   onClick={() => {
                     setCreateGate(null);
+                    setPendingBuild(true);
                     setTab("necessities");
                   }}
                   style={{ ...buttonStyle, padding: "6px 12px", fontSize: 13, borderColor: DIM, color: DIM }}
@@ -325,6 +338,21 @@ export default function Page() {
 
       {tab === "necessities" && (
         <div>
+          {pendingBuild && (
+            <div style={{ border: `1px solid ${GREEN}`, borderRadius: 6, padding: "10px 12px", marginBottom: 14 }}>
+              <p style={{ color: GREEN, margin: 0, fontSize: 13 }}>
+                A build is waiting on this — upload what you need, then continue.
+              </p>
+              <button
+                onClick={continueBuild}
+                disabled={busy}
+                style={{ ...buttonStyle, padding: "6px 12px", fontSize: 13, marginTop: 10, opacity: busy ? 0.5 : 1 }}
+              >
+                {busy ? "working..." : "continue build →"}
+              </button>
+            </div>
+          )}
+
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <span style={{ color: DIM, fontSize: 13 }}>
               scans the script on the create tab for what pictures it needs
