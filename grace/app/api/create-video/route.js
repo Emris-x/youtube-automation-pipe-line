@@ -28,5 +28,6 @@ export async function POST(req) {
   return NextResponse.json({
     started: true,
     run_url: run ? run.html_url : `${REPO_URL}/actions`,
+    run_id: run ? run.id : null,
   });
 }

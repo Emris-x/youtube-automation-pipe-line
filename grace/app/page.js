@@ -15,13 +15,18 @@ function authedFetch(url, opts = {}) {
 
 const STATUS_COLOR = { uploaded: GREEN, running: "#ffd84a", queued: "#ffd84a", failed: "#ff5c5c" };
 const STATUS_LABEL = { uploaded: "uploaded", running: "running", queued: "queued", failed: "failed" };
+const SESSION_MS = 60 * 60 * 1000; // auto-logout after 1 hour
 
 export default function Page() {
   const [pw, setPw] = useState("");
   const [unlocked, setUnlocked] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginError, setLoginError] = useState(null);
+  const [view, setView] = useState("home"); // "home" | "workspace"
   const [ytConnected, setYtConnected] = useState(null);
   const [title, setTitle] = useState("");
   const [script, setScript] = useState("");
+  const [draftRunId, setDraftRunId] = useState(null); // run_id of a build this draft is tied to, until it finishes
   const [status, setStatus] = useState(null);
   const [runUrl, setRunUrl] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -43,13 +48,103 @@ export default function Page() {
     setPendingBuild(false);
   }, [script]);
 
+  // Session: auto-login only within SESSION_MS of the last successful
+  // password check, instead of forever -- previously a saved password never
+  // expired, so the login screen never came back even after a long time away.
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? localStorage.getItem("grace_pw") : null;
-    if (saved !== null) {
+    if (typeof window === "undefined") return;
+    const saved = localStorage.getItem("grace_pw");
+    const savedAt = Number(localStorage.getItem("grace_pw_at") || 0);
+    if (saved !== null && savedAt && Date.now() - savedAt < SESSION_MS) {
       setPw(saved);
       setUnlocked(true);
+    } else {
+      localStorage.removeItem("grace_pw");
+      localStorage.removeItem("grace_pw_at");
     }
   }, []);
+
+  function lock() {
+    localStorage.removeItem("grace_pw");
+    localStorage.removeItem("grace_pw_at");
+    setUnlocked(false);
+    setPw("");
+  }
+
+  // If the app stays open past the 1-hour mark, lock it right there instead
+  // of only checking at the next page load.
+  useEffect(() => {
+    if (!unlocked) return;
+    const savedAt = Number(localStorage.getItem("grace_pw_at") || Date.now());
+    const remaining = SESSION_MS - (Date.now() - savedAt);
+    if (remaining <= 0) {
+      lock();
+      return;
+    }
+    const id = setTimeout(lock, remaining);
+    return () => clearTimeout(id);
+  }, [unlocked]);
+
+  // Draft script/title: restored from localStorage on load, saved as you
+  // type, so a refresh doesn't wipe an unfinished script. Clears only on an
+  // explicit "new project" or once a build tied to this draft finishes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const s = localStorage.getItem("grace_draft_script");
+    const t = localStorage.getItem("grace_draft_title");
+    const r = localStorage.getItem("grace_draft_run_id");
+    if (s) setScript(s);
+    if (t) setTitle(t);
+    if (r) setDraftRunId(r);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (script) localStorage.setItem("grace_draft_script", script);
+    else localStorage.removeItem("grace_draft_script");
+  }, [script]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (title) localStorage.setItem("grace_draft_title", title);
+    else localStorage.removeItem("grace_draft_title");
+  }, [title]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (draftRunId) localStorage.setItem("grace_draft_run_id", draftRunId);
+    else localStorage.removeItem("grace_draft_run_id");
+  }, [draftRunId]);
+
+  function clearDraft() {
+    setScript("");
+    setTitle("");
+    setDraftRunId(null);
+    setCreateGate(null);
+    setPendingBuild(false);
+    setStatus(null);
+    setRunUrl(null);
+  }
+
+  // Watches a draft's dispatched build and clears the draft once it finishes
+  // (uploaded or failed) -- runs regardless of which tab is open, since the
+  // person asked for the script to stay "until you have finished that
+  // build", not just while they're looking at the create tab.
+  useEffect(() => {
+    if (!unlocked || !draftRunId) return;
+    const check = () => {
+      authedFetch("/api/history")
+        .then((r) => r.json())
+        .then((d) => {
+          const match = (d.history || []).find((h) => String(h.run_id) === String(draftRunId));
+          if (match && (match.status === "uploaded" || match.status === "failed")) clearDraft();
+        })
+        .catch(() => {});
+    };
+    check();
+    const id = setInterval(check, 8000);
+    return () => clearInterval(id);
+  }, [unlocked, draftRunId]);
 
   useEffect(() => {
     if (!unlocked) return;
@@ -161,9 +256,26 @@ export default function Page() {
     setUploadingSceneId(null);
   }
 
-  function enter() {
-    localStorage.setItem("grace_pw", pw);
-    setUnlocked(true);
+  // Actually checks the password against the server before unlocking --
+  // previously any text typed here "unlocked" the UI client-side, and a
+  // wrong password only surfaced later as silent 401s on every API call.
+  async function enter() {
+    setLoginBusy(true);
+    setLoginError(null);
+    try {
+      const res = await fetch("/api/youtube-status", { headers: { "x-grace-password": pw } });
+      if (res.status === 401) {
+        setLoginError("Wrong password.");
+        setLoginBusy(false);
+        return;
+      }
+      localStorage.setItem("grace_pw", pw);
+      localStorage.setItem("grace_pw_at", String(Date.now()));
+      setUnlocked(true);
+    } catch (e) {
+      setLoginError("Couldn't reach GRACE — try again.");
+    }
+    setLoginBusy(false);
   }
 
   // Checks the picture library before actually starting a build, and pauses
@@ -217,6 +329,7 @@ export default function Page() {
           `watch progress or grab the link when it's done:`
         );
         setRunUrl(data.run_url);
+        if (data.run_id) setDraftRunId(String(data.run_id));
       }
     } catch (e) {
       setStatus(`Error: ${e.message}`);
@@ -243,17 +356,79 @@ export default function Page() {
           placeholder="password"
           value={pw}
           onChange={(e) => setPw(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !loginBusy && enter()}
           style={inputStyle}
         />
-        <button onClick={enter} style={buttonStyle}>unlock</button>
+        {loginError && <p style={{ color: "#ff8c8c", fontSize: 13, margin: "4px 0 0" }}>{loginError}</p>}
+        <button onClick={enter} disabled={loginBusy} style={{ ...buttonStyle, opacity: loginBusy ? 0.5 : 1 }}>
+          {loginBusy ? "checking..." : "unlock"}
+        </button>
+      </Center>
+    );
+  }
+
+  if (view === "home") {
+    return (
+      <Center wide>
+        <h1 style={{ color: GREEN, marginBottom: 4 }}>&gt; GRACE_</h1>
+        <p style={{ color: DIM, marginTop: 0 }}>
+          How It Actually Broke — script in, video out. Paste a script and GRACE
+          finds the pictures it needs, builds the motion graphics, and uploads
+          straight to YouTube while you're away.
+        </p>
+
+        {script.trim() && (
+          <div style={{ border: `1px solid ${DIM}`, borderRadius: 6, padding: "10px 12px", margin: "16px 0" }}>
+            <p style={{ color: DIM, fontSize: 13, margin: 0 }}>
+              You have an unfinished script{title ? ` — "${title}"` : ""}.
+            </p>
+            <button
+              onClick={() => { setTab("create"); setView("workspace"); }}
+              style={{ ...buttonStyle, padding: "6px 12px", fontSize: 13, marginTop: 8 }}
+            >
+              resume draft →
+            </button>
+          </div>
+        )}
+
+        <button
+          onClick={() => { clearDraft(); setTab("create"); setView("workspace"); }}
+          style={{
+            ...buttonStyle,
+            width: "100%",
+            aspectRatio: "2 / 1",
+            fontSize: 26,
+            letterSpacing: 2,
+            marginTop: 16,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          + NEW
+        </button>
+
+        <button
+          onClick={() => { setTab("history"); setView("workspace"); }}
+          style={{ ...buttonStyle, width: "100%", marginTop: 12, borderColor: DIM, color: DIM }}
+        >
+          history →
+        </button>
       </Center>
     );
   }
 
   return (
     <Center wide>
-      <h1 style={{ color: GREEN, marginBottom: 4 }}>&gt; GRACE_</h1>
-      <p style={{ color: DIM, marginTop: 0 }}>How It Actually Broke — script in, video out.</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <h1 style={{ color: GREEN, marginBottom: 4 }}>&gt; GRACE_</h1>
+        <button
+          onClick={() => setView("home")}
+          style={{ background: "none", border: "none", color: DIM, fontFamily: "inherit", fontSize: 13, cursor: "pointer", padding: 0 }}
+        >
+          ‹ home
+        </button>
+      </div>
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
         <TabButton active={tab === "create"} onClick={() => setTab("create")}>create</TabButton>
