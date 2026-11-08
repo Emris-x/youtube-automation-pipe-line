@@ -22,8 +22,20 @@ export async function POST(req) {
 
   const result = scenes.map((scene) => {
     const tags = extractKeywords(scene.text);
-    const matches = (manifest.images || [])
-      .filter((img) => Array.isArray(img.tags) && isRealMatch(tags, img.tags))
+    const sceneTextNorm = (scene.text || "").trim().toLowerCase();
+    // A picture uploaded for this exact scene text (via the necessities
+    // tab, just now or in an earlier session) is a certain match --
+    // checked before the tag-overlap heuristic, which can't tell "this was
+    // deliberately uploaded for this scene" from "this old picture
+    // happens to share one generic tag" when a scene only has a single
+    // category keyword and nothing else distinctive in it.
+    const exact = (manifest.images || []).filter(
+      (img) => img.scene_text && String(img.scene_text).trim().toLowerCase() === sceneTextNorm
+    );
+    const heuristic = (manifest.images || []).filter(
+      (img) => !exact.includes(img) && Array.isArray(img.tags) && isRealMatch(tags, img.tags)
+    );
+    const matches = [...exact, ...heuristic]
       .slice(0, 6)
       .map((img) => ({ id: img.id, path: img.path, filename: img.filename, url: rawUrl(img.path) }));
 

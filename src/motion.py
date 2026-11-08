@@ -458,7 +458,7 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
 
     scene_image = None
     if pal is not None:
-        image_path = library.best_match(scene.get("keywords", []))
+        image_path = library.best_match(scene.get("keywords", []), scene.get("text", ""))
         if image_path:
             scene_image = _load_scene_image(image_path)
             if scene_image:

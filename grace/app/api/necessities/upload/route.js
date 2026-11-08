@@ -9,7 +9,7 @@ const ALLOWED_EXT = new Set(["png", "jpg", "jpeg", "webp"]);
 export async function POST(req) {
   if (!checkAppPassword(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { filename, data_base64, tags, title } = await req.json();
+  const { filename, data_base64, tags, title, scene_text } = await req.json();
   if (!data_base64) return NextResponse.json({ error: "No image data." }, { status: 400 });
   if (!Array.isArray(tags) || tags.length === 0) {
     return NextResponse.json({ error: "Needs at least one tag to be findable later." }, { status: 400 });
@@ -59,6 +59,15 @@ export async function POST(req) {
     path,
     tags: tags.map((t) => String(t).toLowerCase()),
     title: title || "",
+    // The exact scene text this was uploaded for, when the upload came
+    // from the necessities tab (not set for anything uploaded another
+    // way). Lets matching recognize "this picture was uploaded
+    // specifically for this scene" with certainty, instead of relying on
+    // tag-overlap heuristics alone -- a scene with only one generic
+    // category tag (common when nothing proper-noun-y is in the text)
+    // would otherwise never clear the stricter heuristic even right after
+    // being uploaded for exactly that scene.
+    scene_text: scene_text ? String(scene_text).trim() : "",
     created_at: new Date().toISOString(),
   };
 

@@ -241,6 +241,7 @@ export default function Page() {
           data_base64: dataUrl,
           tags: scene.tags.length ? scene.tags : [scene.id],
           title,
+          scene_text: scene.text,
         }),
       });
       const data = await res.json();

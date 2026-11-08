@@ -39,14 +39,36 @@ def load_manifest():
         return []
 
 
-def best_match(scene_keywords, manifest=None):
+def best_match(scene_keywords, scene_text=None, manifest=None):
     """Returns the absolute path to the best-matching library image for a
-    scene's keywords, or None if nothing matches. "Best" = most overlapping
-    tags; ties go to whichever comes first in the manifest (oldest)."""
-    if not scene_keywords:
-        return None
+    scene, or None if nothing matches.
+
+    Checks for an exact scene-text match first -- a picture uploaded via
+    the necessities tab for this literal scene is a certain match,
+    regardless of how many (if any) keyword tags the scene triggered.
+    Without this, a scene with only one generic category keyword (or none
+    at all -- common for narration with no proper noun or category word in
+    it) could never clear the tag-overlap heuristic below even right after
+    being uploaded specifically for it.
+
+    Falls back to tag overlap ("best" = most overlapping tags, requiring a
+    shared brand tag or 2+ shared category tags -- a single shared
+    category tag alone is how an unrelated old picture from a totally
+    different script used to get reused); ties go to whichever comes
+    first in the manifest (oldest)."""
     manifest = load_manifest() if manifest is None else manifest
     if not manifest:
+        return None
+
+    text_norm = (scene_text or "").strip().lower()
+    if text_norm:
+        for entry in manifest:
+            if str(entry.get("scene_text") or "").strip().lower() == text_norm:
+                path = os.path.join(_BASE_DIR, "..", entry["path"])
+                if os.path.exists(path):
+                    return path
+
+    if not scene_keywords:
         return None
 
     kw = {str(k).lower() for k in scene_keywords}

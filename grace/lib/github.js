@@ -13,7 +13,13 @@ function headers() {
 }
 
 export async function ghFetch(path, opts = {}) {
-  const res = await fetch(`${API}${path}`, { ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
+  // Next.js's extended fetch() caches GET requests by default (even inside
+  // a route handler, even in production on Vercel -- its Data Cache is
+  // shared across invocations, not per-request). Every read here needs to
+  // see what was *just* written (a manifest right after an upload, a run's
+  // status while polling, history right after a build finishes), so always
+  // bypass that cache rather than risk serving a stale snapshot.
+  const res = await fetch(`${API}${path}`, { cache: "no-store", ...opts, headers: { ...headers(), ...(opts.headers || {}) } });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(`GitHub API ${path} -> ${res.status}: ${body}`);
