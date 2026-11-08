@@ -232,6 +232,16 @@
       ],
       "title": "Fish world ",
       "created_at": "2026-11-08T11:15:05.749Z"
+    },
+    {
+      "id": "img_0024",
+      "filename": "img_0024_shield.jpg",
+      "path": "images/library/img_0024_shield.jpg",
+      "tags": [
+        "shield"
+      ],
+      "title": "Fish world ",
+      "created_at": "2026-11-08T11:15:10.460Z"
     }
   ]
 }
