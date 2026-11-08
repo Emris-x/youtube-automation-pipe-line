@@ -15,6 +15,12 @@ export async function POST(req) {
   const body = await req.json();
   const patch = {};
   if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
+  if (body.visual_mode != null) {
+    if (body.visual_mode !== "pictures" && body.visual_mode !== "stickman") {
+      return NextResponse.json({ error: "visual_mode must be 'pictures' or 'stickman'." }, { status: 400 });
+    }
+    patch.visual_mode = body.visual_mode;
+  }
   if (body.interval_hours != null) {
     const n = Number(body.interval_hours);
     if (!Number.isFinite(n) || n < 1 || n > 168) {

@@ -42,6 +42,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import stickman
 import icons as icon_lib
 import library
+import cast as cast_lib
 
 W, H = 1080, 1920
 FPS = 30
@@ -342,9 +343,9 @@ _BACKDROP_CHAR_CX, _BACKDROP_CHAR_CY = W * 0.24, H * 0.76  # the stickman's anch
 
 def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, backdrop=False):
     """Stick figure acting out the scene's pose, plus a small badge icon for
-    whatever the sentence is actually about, when one was detected. A soft
-    glow pulses behind the figure's head while it's actually speaking, so
-    the sync to the voice reads at a glance, not just via the mouth flap.
+    whatever the sentence is actually about, when one was detected. Just a
+    plain stickman -- no glow effect behind it; the mouth-flap animation
+    alone carries the "currently speaking" cue.
 
     When `backdrop` is True (a real picture fills the frame instead of the
     procedural motif), the figure moves to a lower corner -- out of the
@@ -363,22 +364,6 @@ def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, b
     else:
         cx, cy = W / 2, H * 0.58
     talking = stickman.is_speaking(boundaries, t) if boundaries else False
-
-    # The talking glow blends toward pal["bg"] (near-black for the terminal
-    # theme) -- that only reads right against the matching procedural
-    # background it was drawn for. draw.ellipse(fill=...) is a flat
-    # overwrite, not an alpha blend, so painting it over a photo backdrop
-    # stamps a solid near-black disc on top of the picture instead of a
-    # glow -- exactly the "pasted on, doesn't integrate" look. Skip it in
-    # backdrop mode; the mouth-flap animation already carries the
-    # speaking cue there.
-    if talking and not backdrop:
-        glow_cx, glow_cy = cx, cy - 62 * 3.4
-        glow_r = 62 * 1.5 + 10 * math.sin(t * 10.0)
-        for i in range(3, 0, -1):
-            rr = glow_r * (1 + i * 0.22)
-            col = tuple(int(_lerp(pal["bg"][c], pal["ink"][c], 0.10 / i)) for c in range(3))
-            draw.ellipse([glow_cx - rr, glow_cy - rr, glow_cx + rr, glow_cy + rr], fill=col)
 
     stickman.draw_stickman(draw, cx, cy, 62, pose, t, talking, pal["ink"], pal["dim"])
 
@@ -540,8 +525,9 @@ def _draw_scene_backdrop(img, scene_image, t, duration, scene_id):
     img.paste(overlay, (0, 0), overlay)
 
 
-def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
+def render_scene(scene, boundaries, out_path, fps=FPS, theme=None, mode="pictures"):
     theme = theme or THEME
+    stickman_mode = mode == "stickman"
     duration = boundaries[-1]["offset_s"] + boundaries[-1]["duration_s"] if boundaries else 3.0
     n_frames = max(1, int(duration * fps))
 
@@ -553,8 +539,12 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
     icon_name = icon_lib.pick_icon_for_text(scene.get("text", "")) if CHARACTERS else None
     pal = TERMINAL_PALETTES.get(theme)
 
+    # Stickman mode never touches the picture library -- no upload gate,
+    # no "missing picture" fallback, because there's never a picture to
+    # look for in the first place. The stick figures + vector prop ARE
+    # the visual.
     scene_image = None
-    if pal is not None:
+    if pal is not None and not stickman_mode:
         image_path = library.best_match(scene.get("keywords", []), scene.get("text", ""))
         if image_path:
             scene_image = _load_scene_image(image_path)
@@ -580,12 +570,18 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
                     sy = int(_BACKDROP_CHAR_CY - shadow.height * 0.42)
                     img.paste(shadow, (sx, sy), shadow)
                 draw = ImageDraw.Draw(img)
+                if CHARACTERS:
+                    _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, backdrop=True)
             else:
                 img = _terminal_bg(t, pal)
                 draw = ImageDraw.Draw(img)
-                _motif_terminal(draw, scene["visual"], t, pal)
-            if CHARACTERS:
-                _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, backdrop=(scene_image is not None))
+                if stickman_mode:
+                    if CHARACTERS:
+                        cast_lib.draw_cast(draw, scene, boundaries, t, duration, pal, icon_name, font=_font(44, FONT_MONO_BOLD))
+                else:
+                    _motif_terminal(draw, scene["visual"], t, pal)
+                    if CHARACTERS:
+                        _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, backdrop=False)
             _terminal_header(draw, t, pal, scene.get("terminal_label", "breach_report.sh"))
             if boundaries:
                 _draw_caption_terminal(draw, active_idx, boundaries, t, pal)

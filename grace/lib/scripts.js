@@ -3,7 +3,7 @@ import { getRepoFile, putRepoFile } from "./github";
 export const QUEUE_PATH = "data/scripts_queue.json";
 export const SCHEDULE_PATH = "data/schedule.json";
 
-const DEFAULT_SCHEDULE = { enabled: false, interval_hours: 24, last_dispatch_at: null };
+const DEFAULT_SCHEDULE = { enabled: false, interval_hours: 24, last_dispatch_at: null, visual_mode: "pictures" };
 
 function parseJsonFile(file, fallback) {
   if (!file) return fallback;

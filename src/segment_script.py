@@ -49,7 +49,7 @@ def _chunk_by_words(text, max_words=22):
     return chunks
 
 
-def text_to_script(raw_text, title=None, terminal_label="script.log"):
+def text_to_script(raw_text, title=None, terminal_label="script.log", visual_mode="pictures"):
     raw_text = raw_text.strip()
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", raw_text) if p.strip()]
 
@@ -81,6 +81,10 @@ def text_to_script(raw_text, title=None, terminal_label="script.log"):
         "title": title or first_line,
         "description": "",
         "tags": [],
+        # "pictures" (default): library photos, with the upload gate.
+        # "stickman": no library lookup at all -- stick figures + drawn
+        # vector props carry every scene, fully hands-off.
+        "visual_mode": visual_mode if visual_mode in ("pictures", "stickman") else "pictures",
         "scenes": scenes,
     }
 
@@ -93,8 +97,9 @@ if __name__ == "__main__":
     env_text = os.environ.get("SCRIPT_TEXT")
     text = env_text if env_text is not None else sys.stdin.read()
     title = os.environ.get("VIDEO_TITLE") or None
+    visual_mode = os.environ.get("VIDEO_MODE") or "pictures"
     out_path = sys.argv[1] if len(sys.argv) > 1 else None
-    script = text_to_script(text, title=title)
+    script = text_to_script(text, title=title, visual_mode=visual_mode)
     if out_path:
         with open(out_path, "w") as f:
             json.dump(script, f, indent=2)

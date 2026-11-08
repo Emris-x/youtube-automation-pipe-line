@@ -43,6 +43,7 @@ _MUSIC_FILTER = (
 def build(script_path, out_name=None, tts_engine=None, theme=None):
     script = load_script(script_path)
     out_name = out_name or os.path.splitext(os.path.basename(script_path))[0]
+    visual_mode = script.get("visual_mode", "pictures")
 
     os.makedirs(AUDIO_DIR, exist_ok=True)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -69,7 +70,7 @@ def build(script_path, out_name=None, tts_engine=None, theme=None):
 
         print(f"[{sid}] rendering motion graphics...")
         silent_video = os.path.join(OUTPUT_DIR, f"{out_name}_{sid}_silent.mp4")
-        _, duration = render_scene(scene, boundaries, silent_video, theme=theme)
+        _, duration = render_scene(scene, boundaries, silent_video, theme=theme, mode=visual_mode)
         total_duration += duration
 
         print(f"[{sid}] muxing audio + video...")

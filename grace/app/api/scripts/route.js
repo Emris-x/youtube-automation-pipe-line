@@ -33,6 +33,8 @@ export async function POST(req) {
     return NextResponse.json({ error: "No script text found (each script needs at least ~20 characters)." }, { status: 400 });
   }
 
+  const visualMode = body.visual_mode === "stickman" ? "stickman" : "pictures";
+
   const queue = await getQueue();
   let nextId = nextScriptId(queue);
   const entries = texts.map((script_text) => {
@@ -42,6 +44,7 @@ export async function POST(req) {
       id,
       title: body.title && texts.length === 1 ? body.title : null, // a shared title only makes sense for a single script
       script_text,
+      visual_mode: visualMode, // used by the "create now" button; scheduled auto-dispatch uses the schedule's own mode instead
       status: "queued",
       created_at: new Date().toISOString(),
     };

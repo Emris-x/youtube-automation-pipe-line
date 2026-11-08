@@ -49,10 +49,12 @@ export default function Page() {
   const [createGate, setCreateGate] = useState(null); // {scenes, missing} when create is paused waiting on a decision
   const [pendingBuild, setPendingBuild] = useState(false); // true after "go upload pictures" -- shows a "continue build" button on necessities
   const [scriptFocused, setScriptFocused] = useState(false); // is the script textarea currently focused -- drives Grace's "looking at your script" expression
+  const [visualMode, setVisualMode] = useState("pictures"); // "pictures" (library photos + upload gate) | "stickman" (no library, fully hands-off)
   const [scriptsQueue, setScriptsQueue] = useState(null); // queued-script records, or null before first load
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsBulkText, setScriptsBulkText] = useState("");
   const [scriptsBulkTitle, setScriptsBulkTitle] = useState("");
+  const [scriptsBulkMode, setScriptsBulkMode] = useState("pictures");
   const [scriptsAddBusy, setScriptsAddBusy] = useState(false);
   const [scriptsAddError, setScriptsAddError] = useState(null);
   const [scriptsRowBusy, setScriptsRowBusy] = useState(null); // id of a queue entry currently being created/removed
@@ -214,7 +216,7 @@ export default function Page() {
     authedFetch("/api/scripts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ script_text: scriptsBulkText, title: scriptsBulkTitle || undefined }),
+      body: JSON.stringify({ script_text: scriptsBulkText, title: scriptsBulkTitle || undefined, visual_mode: scriptsBulkMode }),
     })
       .then((r) => r.json())
       .then((d) => {
@@ -394,7 +396,9 @@ export default function Page() {
   // picture. Call it again (e.g. from the gate's "continue anyway" button)
   // once createGate is already set, and it skips straight to the real build.
   async function createVideo() {
-    if (!createGate) {
+    // Stickman mode never touches the picture library, so there's nothing
+    // to gate on -- skip straight to dispatch.
+    if (!createGate && visualMode !== "stickman") {
       setBusy(true);
       setStatus("Checking the picture library...");
       try {
@@ -429,7 +433,7 @@ export default function Page() {
       const res = await authedFetch("/api/create-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script_text: script, title }),
+        body: JSON.stringify({ script_text: script, title, visual_mode: visualMode }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -544,6 +548,8 @@ export default function Page() {
             )}
           </div>
 
+          <VisualModeToggle value={visualMode} onChange={setVisualMode} />
+
           <input
             placeholder="title (optional — first line used if blank)"
             value={title}
@@ -616,6 +622,8 @@ export default function Page() {
             Paste several at once by separating them with a line that's just <code style={{ color: "#eafff2" }}>---</code>.
           </p>
 
+          <VisualModeToggle value={scriptsBulkMode} onChange={setScriptsBulkMode} />
+
           <input
             placeholder="title (optional — only used for a single script)"
             value={scriptsBulkTitle}
@@ -682,6 +690,9 @@ export default function Page() {
                     <option value={168}>week</option>
                   </select>
                 </div>
+                <div style={{ marginTop: 10 }}>
+                  <VisualModeToggle value={schedule.visual_mode} onChange={(v) => saveSchedule({ visual_mode: v })} compact />
+                </div>
                 {schedule.enabled && schedule.remaining_queued === 0 && (
                   <p style={{ color: "#ffd84a", fontSize: 13, margin: "10px 0 0" }}>
                     Queue's empty — add scripts above so there's something to dispatch.
@@ -689,7 +700,9 @@ export default function Page() {
                 )}
                 <p style={{ color: DIM, fontSize: 12, margin: "8px 0 0" }}>
                   Checked hourly on GitHub's clock; dispatches the oldest queued script once this interval has passed.
-                  Scheduled videos upload as private.
+                  Scheduled videos upload as private. Stickman mode skips the picture library entirely, so it's the
+                  only mode that's truly hands-off here — pictures mode falls back to the plain look for any scene
+                  the library doesn't already cover.
                 </p>
               </>
             )}
@@ -717,6 +730,7 @@ export default function Page() {
                   {SCRIPT_STATUS_LABEL[item.status] || item.status}
                 </span>
               </div>
+              <div style={{ color: DIM, fontSize: 12, marginTop: 2 }}>{item.visual_mode || "pictures"}</div>
               {item.status === "failed" && (
                 <div style={{ color: "#ff8c8c", fontSize: 13, marginTop: 4 }}>
                   {item.failed_step ? `failed at: ${item.failed_step}` : "failed"}
@@ -1273,6 +1287,34 @@ function HomeView({ hasDraft, title, preview, onResume, onNew, onHistory }) {
           view history →
         </button>
       </div>
+    </div>
+  );
+}
+
+/** pictures (library photos + upload gate) vs stickman (no library, fully
+ * hands-off: stick figures + drawn vector props carry every scene). Shared
+ * between the Create tab, the Scripts add form, and the schedule panel. */
+function VisualModeToggle({ value, onChange, compact }) {
+  return (
+    <div style={{ display: "flex", gap: 8, margin: compact ? "0" : "10px 0" }}>
+      {[
+        ["pictures", "pictures"],
+        ["stickman", "stickman"],
+      ].map(([v, label]) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          style={{
+            ...buttonStyle,
+            padding: compact ? "4px 10px" : "6px 14px",
+            fontSize: 13,
+            borderColor: value === v ? GREEN : DIM,
+            color: value === v ? GREEN : DIM,
+          }}
+        >
+          {label}
+        </button>
+      ))}
     </div>
   );
 }

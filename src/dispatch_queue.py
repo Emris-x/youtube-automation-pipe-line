@@ -36,7 +36,7 @@ SCHEDULE_PATH = os.path.join(HERE, "..", "data", "schedule.json")
 STATE_PATH = os.path.join(HERE, "..", "scripts", "queue_dispatch_state.json")
 RESULT_PATH = os.path.join(HERE, "..", "scripts", "last_result.json")
 
-DEFAULT_SCHEDULE = {"enabled": False, "interval_hours": 24, "last_dispatch_at": None}
+DEFAULT_SCHEDULE = {"enabled": False, "interval_hours": 24, "last_dispatch_at": None, "visual_mode": "pictures"}
 
 
 def _load(path, default):
@@ -99,7 +99,14 @@ def _pop(out_script_path):
     schedule["last_dispatch_at"] = datetime.now(timezone.utc).isoformat()
     _save(SCHEDULE_PATH, schedule)
 
-    script = segment_script.text_to_script(item["script_text"], title=item.get("title"))
+    # The schedule's own mode setting governs every auto-dispatched build,
+    # not whatever mode (if any) was picked when the script was queued --
+    # scheduled runs are unattended, so there's one standing decision
+    # ("hands-off stickman" or "pictures, trusting the library's already
+    # covered") rather than a per-script choice nobody's there to make.
+    script = segment_script.text_to_script(
+        item["script_text"], title=item.get("title"), visual_mode=schedule.get("visual_mode", "pictures"),
+    )
     _save(out_script_path, script)
     _save(STATE_PATH, {"item_id": item["id"], "title": script["title"]})
 

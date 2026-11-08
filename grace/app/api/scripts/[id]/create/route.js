@@ -14,7 +14,11 @@ export async function POST(req, { params }) {
   }
 
   try {
-    await dispatchWorkflow("manual-video.yml", { script_text: item.script_text, title: item.title || "" });
+    await dispatchWorkflow("manual-video.yml", {
+      script_text: item.script_text,
+      title: item.title || "",
+      visual_mode: item.visual_mode === "stickman" ? "stickman" : "pictures",
+    });
   } catch (e) {
     return NextResponse.json({ error: `Couldn't start the build: ${e.message}` }, { status: 500 });
   }

@@ -215,9 +215,22 @@ def _draw_face(draw, head_cx, head_cy, s, face, talking, t, color, dim_color):
         draw.arc([head_cx - 0.26 * s, mouth_y - 0.22 * s, head_cx + 0.26 * s, mouth_y + 0.2 * s], 15, 165, fill=color, width=max(2, w - 1))
 
 
-def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color):
+_MIRROR_KEYS = ("lean", "l_arm", "r_arm", "l_leg", "r_leg", "l_upper", "l_fore", "r_upper", "r_fore", "head_tilt")
+
+
+def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color, mirror=False):
     """cx, cy = position of the figure's hip (rough center). scale = head
-    radius in px, everything else is proportional to it."""
+    radius in px, everything else is proportional to it.
+
+    mirror=True flips the figure left-right (a second character facing
+    back toward the narrator instead of facing the same way) by negating
+    every directional keyframe value before drawing -- every limb/lean/
+    tilt angle in POSES is defined as "degrees from straight down,
+    positive toward the figure's own right" (see _limb_point), and
+    negating that angle reflects each limb about its own origin, which
+    for a simple stick figure (all limbs rooted near the hip/neck) reads
+    as a clean mirror of the whole figure rather than needing a second,
+    separately-authored set of poses."""
     s = scale
     w = max(3, int(s * 0.22))
     joint_r = max(2, int(s * 0.1))
@@ -225,6 +238,8 @@ def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color):
     data = POSES.get(pose, POSES["stand"])
     frac = (t % data["cycle_s"]) / data["cycle_s"] if data["cycle_s"] > 0 else 0.0
     kf = _tween(data["keyframes"], frac)
+    if mirror:
+        kf = {k: (-v if k in _MIRROR_KEYS else v) for k, v in kf.items()}
 
     hip = (cx, cy + kf["bob"] * s)
     neck = _limb_point(hip, s * 2.4, 180 + kf["lean"])

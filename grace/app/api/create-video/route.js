@@ -5,13 +5,14 @@ import { checkAppPassword } from "../../../lib/auth";
 export async function POST(req) {
   if (!(await checkAppPassword(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { script_text, title } = await req.json();
+  const { script_text, title, visual_mode } = await req.json();
   if (!script_text || script_text.trim().length < 20) {
     return NextResponse.json({ error: "Script looks too short." }, { status: 400 });
   }
+  const mode = visual_mode === "stickman" ? "stickman" : "pictures";
 
   try {
-    await dispatchWorkflow("manual-video.yml", { script_text, title: title || "" });
+    await dispatchWorkflow("manual-video.yml", { script_text, title: title || "", visual_mode: mode });
   } catch (e) {
     return NextResponse.json({ error: `Couldn't start the build: ${e.message}` }, { status: 500 });
   }

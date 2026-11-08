@@ -19,6 +19,7 @@ _KEYWORD_ICONS = [
     (r"\b(banks?|banking|atms?|financ\w*)\b", "bank"),
     (r"\b(hospitals?|surger(y|ies)|patients?|medical)\b", "hospital"),
     (r"\b(servers?|data ?cent(er|re)s?|cloud|backend|router|routers)\b", "server"),
+    (r"\b(computers?|laptops?|pcs?|desktops?|workstations?)\b", "laptop"),
     (r"\b(phones?|mobile|smartphones?|text messages?)\b", "phone"),
     (r"\b(password|login|hack(ed|er|ers)?|breach(ed)?|stolen)\b", "lock"),
     (r"\b(security|encrypt\w*|firewall|protect\w*)\b", "shield"),
@@ -114,6 +115,18 @@ def _server(draw, cx, cy, s, color):
         draw.ellipse([cx + s * 0.6, y0 + s * 0.2, cx + s * 0.6 + s * 0.14, y0 + s * 0.2 + s * 0.14], fill=color)
 
 
+def _laptop(draw, cx, cy, s, color):
+    """A crashing/broken computer -- screen with an X through it, for
+    "computer/laptop/pc" mentions, distinct from _server's rack-of-boxes."""
+    w = max(2, int(s // 14))
+    draw.rounded_rectangle([cx - s, cy - s * 0.75, cx + s, cy + s * 0.45], radius=s * 0.1, outline=color, width=w)
+    draw.line([cx - s * 0.68, cy - s * 0.48, cx + s * 0.68, cy + s * 0.18], fill=color, width=w)
+    draw.line([cx + s * 0.68, cy - s * 0.48, cx - s * 0.68, cy + s * 0.18], fill=color, width=w)
+    draw.line([cx - s * 1.15, cy + s * 0.75, cx + s * 1.15, cy + s * 0.75], fill=color, width=w)
+    draw.line([cx - s * 0.75, cy + s * 0.45, cx - s * 1.0, cy + s * 0.72], fill=color, width=w)
+    draw.line([cx + s * 0.75, cy + s * 0.45, cx + s * 1.0, cy + s * 0.72], fill=color, width=w)
+
+
 def _phone(draw, cx, cy, s, color):
     w = max(2, int(s // 16))
     draw.rounded_rectangle([cx - s * 0.55, cy - s, cx + s * 0.55, cy + s], radius=s * 0.25, outline=color, width=w)
@@ -182,7 +195,7 @@ def _clock(draw, cx, cy, s, color):
 
 _ICON_FUNCS = {
     "plane": _plane, "bank": _bank, "hospital": _hospital, "server": _server,
-    "phone": _phone, "lock": _lock, "shield": _shield, "globe": _globe,
+    "laptop": _laptop, "phone": _phone, "lock": _lock, "shield": _shield, "globe": _globe,
     "money": _money, "warning": _warning, "person": _person, "clock": _clock,
 }
 

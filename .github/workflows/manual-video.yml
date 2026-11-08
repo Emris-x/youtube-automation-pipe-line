@@ -13,6 +13,12 @@ on:
         description: "Video title (optional — first line used if blank)"
         type: string
         required: false
+      visual_mode:
+        description: "pictures (library photos + upload gate) or stickman (no library, fully hands-off)"
+        type: choice
+        options: ["pictures", "stickman"]
+        default: "pictures"
+        required: false
 
 permissions:
   contents: write
@@ -53,6 +59,7 @@ jobs:
           # break (or inject into) the generated shell line.
           SCRIPT_TEXT: ${{ github.event.inputs.script_text }}
           VIDEO_TITLE: ${{ github.event.inputs.title }}
+          VIDEO_MODE: ${{ github.event.inputs.visual_mode }}
         run: |
           cd src
           python segment_script.py ../scripts/manual_video.json
