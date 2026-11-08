@@ -1,3 +1,14 @@
 {
-  "images": []
+  "images": [
+    {
+      "id": "img_0001",
+      "filename": "img_0001_hook.jpg",
+      "path": "images/library/img_0001_hook.jpg",
+      "tags": [
+        "hook"
+      ],
+      "title": "Helicopter to space",
+      "created_at": "2026-11-08T09:14:27.551Z"
+    }
+  ]
 }
