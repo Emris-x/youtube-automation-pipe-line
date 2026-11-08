@@ -158,6 +158,31 @@ def _limb_point(origin, length, angle_deg):
     return ox + length * math.sin(rad), oy + length * math.cos(rad)
 
 
+def _angle_to(origin, target):
+    """The inverse of _limb_point: the angle (in that same "0 = straight
+    down, positive = toward the right" convention) from `origin` toward
+    `target`, whatever direction that actually is on screen. Lets a limb
+    aim at a real point -- another character, a shared prop -- instead of
+    only ever following a pose's one baked angle regardless of who or
+    what else is in the frame.
+
+    Clamped away from the narrow band around +-180 (straight up): a
+    target directly overhead (the floating diagram prop, say) gives an
+    angle right around there, and a single straight shoulder-to-hand
+    segment at that angle runs clean through the head on its way up --
+    the exact "horn, not a hand" bug the facepalm pose's bent elbow was
+    built to avoid. There's no elbow bend here, so instead the angle is
+    capped short of vertical, which still reads as "pointing up at that"
+    (arm raised and angled toward it) without the line crossing the skull."""
+    dx, dy = target[0] - origin[0], target[1] - origin[1]
+    angle = math.degrees(math.atan2(dx, dy))
+    if angle > 120:
+        angle = 120
+    elif angle < -120:
+        angle = -120
+    return angle
+
+
 def _draw_face(draw, head_cx, head_cy, s, face, talking, t, color, dim_color):
     """Eyebrows + eyes + mouth for the given expression. `talking` always
     overrides the mouth with the flapping talk shape, same as before --
@@ -218,7 +243,7 @@ def _draw_face(draw, head_cx, head_cy, s, face, talking, t, color, dim_color):
 _MIRROR_KEYS = ("lean", "l_arm", "r_arm", "l_leg", "r_leg", "l_upper", "l_fore", "r_upper", "r_fore", "head_tilt")
 
 
-def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color, mirror=False):
+def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color, mirror=False, aim=None):
     """cx, cy = position of the figure's hip (rough center). scale = head
     radius in px, everything else is proportional to it.
 
@@ -230,7 +255,15 @@ def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color, mirro
     negating that angle reflects each limb about its own origin, which
     for a simple stick figure (all limbs rooted near the hip/neck) reads
     as a clean mirror of the whole figure rather than needing a second,
-    separately-authored set of poses."""
+    separately-authored set of poses.
+
+    aim=(arm_key, (tx, ty)), arm_key "l" or "r": that arm ignores its
+    pose's own baked angle and instead points at a real target position
+    in frame coordinates (another character, a shared prop), with a
+    small idle sway layered on top so it doesn't look frozen. This is
+    what lets two characters actually point AT each other / at the same
+    thing, rather than each always gesturing at a fixed angle regardless
+    of who or what else is on screen."""
     s = scale
     w = max(3, int(s * 0.22))
     joint_r = max(2, int(s * 0.1))
@@ -245,6 +278,13 @@ def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color, mirro
     neck = _limb_point(hip, s * 2.4, 180 + kf["lean"])
     head_cy = neck[1] - s * 1.0
     head_cx = neck[0] + s * 0.012 * kf["head_tilt"]
+
+    if aim:
+        arm_key, target = aim
+        kf = dict(kf)
+        kf[f"{arm_key}_arm"] = _angle_to(neck, target) + 6 * math.sin(t * 1.8)
+        kf.pop(f"{arm_key}_upper", None)
+        kf.pop(f"{arm_key}_fore", None)
 
     # legs (from hip)
     l_foot = _limb_point(hip, s * 2.3, kf["l_leg"])
