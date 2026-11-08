@@ -368,53 +368,16 @@ export default function Page() {
   }
 
   if (view === "home") {
+    const preview = script.trim().replace(/\s+/g, " ").slice(0, 86);
     return (
-      <Center wide>
-        <h1 style={{ color: GREEN, marginBottom: 4 }}>&gt; GRACE_</h1>
-        <p style={{ color: DIM, marginTop: 0 }}>
-          How It Actually Broke — script in, video out. Paste a script and GRACE
-          finds the pictures it needs, builds the motion graphics, and uploads
-          straight to YouTube while you're away.
-        </p>
-
-        {script.trim() && (
-          <div style={{ border: `1px solid ${DIM}`, borderRadius: 6, padding: "10px 12px", margin: "16px 0" }}>
-            <p style={{ color: DIM, fontSize: 13, margin: 0 }}>
-              You have an unfinished script{title ? ` — "${title}"` : ""}.
-            </p>
-            <button
-              onClick={() => { setTab("create"); setView("workspace"); }}
-              style={{ ...buttonStyle, padding: "6px 12px", fontSize: 13, marginTop: 8 }}
-            >
-              resume draft →
-            </button>
-          </div>
-        )}
-
-        <button
-          onClick={() => { clearDraft(); setTab("create"); setView("workspace"); }}
-          style={{
-            ...buttonStyle,
-            width: "100%",
-            aspectRatio: "2 / 1",
-            fontSize: 26,
-            letterSpacing: 2,
-            marginTop: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          + NEW
-        </button>
-
-        <button
-          onClick={() => { setTab("history"); setView("workspace"); }}
-          style={{ ...buttonStyle, width: "100%", marginTop: 12, borderColor: DIM, color: DIM }}
-        >
-          history →
-        </button>
-      </Center>
+      <HomeView
+        hasDraft={!!script.trim()}
+        title={title}
+        preview={preview}
+        onResume={() => { setTab("create"); setView("workspace"); }}
+        onNew={() => { clearDraft(); setTab("create"); setView("workspace"); }}
+        onHistory={() => { setTab("history"); setView("workspace"); }}
+      />
     );
   }
 
@@ -805,6 +768,152 @@ function GraceTimeOverlay({ item, onClose }) {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** The landing screen. Same hacker-terminal palette as the rest of the app,
+ * just laid out with more care: a glowing wordmark, a short numbered
+ * explainer instead of one dense paragraph, a real draft-preview card, and
+ * a NEW button that actually reads as the one big action on the screen. */
+function HomeView({ hasDraft, title, preview, onResume, onNew, onHistory }) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: "24px 16px 40px",
+        backgroundImage:
+          "linear-gradient(rgba(60,255,140,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(60,255,140,0.05) 1px, transparent 1px)",
+        backgroundSize: "28px 28px",
+        backgroundColor: BG,
+      }}
+    >
+      <style>{`
+        @keyframes grace-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+        @keyframes grace-fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .grace-cursor { display: inline-block; animation: grace-blink 1.1s step-end infinite; }
+        .grace-fade { animation: grace-fade-up 0.35s ease-out both; }
+        .grace-new-btn { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .grace-new-btn:hover { transform: translateY(-1px); box-shadow: 0 0 28px rgba(60,255,140,0.35); }
+        .grace-new-btn:active { transform: translateY(0); }
+      `}</style>
+
+      <div style={{ width: "100%", maxWidth: 560, margin: "0 auto" }}>
+        <div className="grace-fade" style={{ textAlign: "center", padding: "20px 0 8px" }}>
+          <div
+            style={{
+              fontSize: 13,
+              color: DIM,
+              letterSpacing: 3,
+              textTransform: "uppercase",
+              marginBottom: 6,
+            }}
+          >
+            how it actually broke
+          </div>
+          <h1
+            style={{
+              color: GREEN,
+              fontSize: 40,
+              letterSpacing: 1,
+              margin: 0,
+              textShadow: "0 0 18px rgba(60,255,140,0.45)",
+            }}
+          >
+            &gt; GRACE<span className="grace-cursor">_</span>
+          </h1>
+          <p style={{ color: "#cfe9db", fontSize: 14, marginTop: 10, marginBottom: 0 }}>
+            script in, video out — uploaded while you're away.
+          </p>
+        </div>
+
+        <div
+          className="grace-fade"
+          style={{
+            border: `1px solid ${DIM}`,
+            borderRadius: 10,
+            padding: "16px 18px",
+            margin: "24px 0",
+            background: "rgba(60,255,140,0.03)",
+          }}
+        >
+          {[
+            ["1", "paste a script — one blank line between scenes"],
+            ["2", "grace finds matching pictures and builds the motion graphics"],
+            ["3", "it uploads straight to youtube, no need to stay watching"],
+          ].map(([n, text]) => (
+            <div key={n} style={{ display: "flex", gap: 12, alignItems: "baseline", padding: "6px 0" }}>
+              <span style={{ color: GREEN, fontSize: 13, flexShrink: 0, minWidth: 16 }}>[{n}]</span>
+              <span style={{ color: "#cfe9db", fontSize: 14 }}>{text}</span>
+            </div>
+          ))}
+        </div>
+
+        {hasDraft && (
+          <div
+            className="grace-fade"
+            style={{
+              border: `1px solid ${GREEN}`,
+              borderRadius: 10,
+              padding: "14px 16px",
+              marginBottom: 18,
+              background: "rgba(60,255,140,0.05)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+              <span style={{ color: GREEN, fontSize: 13 }}>● unfinished draft</span>
+            </div>
+            <p style={{ color: "#eafff2", fontSize: 14, margin: "6px 0 2px", fontWeight: 600 }}>
+              {title || "Untitled"}
+            </p>
+            {preview && (
+              <p style={{ color: DIM, fontSize: 13, margin: "0 0 10px" }}>
+                "{preview}{preview.length >= 86 ? "…" : ""}"
+              </p>
+            )}
+            <button onClick={onResume} style={{ ...buttonStyle, padding: "7px 14px", fontSize: 13 }}>
+              resume draft →
+            </button>
+          </div>
+        )}
+
+        <button
+          onClick={onNew}
+          className="grace-new-btn"
+          style={{
+            ...buttonStyle,
+            width: "100%",
+            aspectRatio: "3 / 1",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 2,
+            boxShadow: "0 0 16px rgba(60,255,140,0.18)",
+            background: "rgba(60,255,140,0.04)",
+          }}
+        >
+          <span style={{ fontSize: 30, letterSpacing: 3, lineHeight: 1 }}>+ NEW</span>
+          <span style={{ fontSize: 12, color: DIM, letterSpacing: 1, fontWeight: 400 }}>start a new project</span>
+        </button>
+
+        <button
+          onClick={onHistory}
+          style={{
+            background: "none",
+            border: "none",
+            color: DIM,
+            fontFamily: "inherit",
+            fontSize: 14,
+            cursor: "pointer",
+            width: "100%",
+            textAlign: "center",
+            padding: "16px 0 4px",
+          }}
+        >
+          view history →
+        </button>
       </div>
     </div>
   );
