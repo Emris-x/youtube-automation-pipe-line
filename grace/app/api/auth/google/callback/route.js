@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { setRepoSecret } from "../../../../../lib/github";
-import { passwordMatches } from "../../../../../lib/auth";
 
 /**
  * Google redirects here with ?code=... after Emris approves access.
@@ -15,8 +14,16 @@ export async function GET(req) {
   const error = url.searchParams.get("error");
   const state = url.searchParams.get("state") || "";
 
-  if (!passwordMatches(state)) {
-    return htmlResponse(`Wrong or missing password — this link wasn't started from GRACE itself.`, 401);
+  // CSRF check: `state` must match the random value /start stashed in an
+  // httpOnly cookie right before redirecting to Google -- proves this
+  // callback is answering a request /start actually issued (which was
+  // already password-gated), not a forged redirect someone else crafted
+  // and tricked the browser into following. The password itself doesn't
+  // travel through this step at all anymore.
+  const cookieState = req.cookies.get("grace_oauth_state")?.value;
+  const stateOk = cookieState && state && cookieState === state;
+  if (!stateOk) {
+    return htmlResponse(`This link wasn't started from GRACE itself, or it expired. <a href="/">Try again</a>`, 401);
   }
   if (error) {
     return htmlResponse(`Google said: ${error}. <a href="/">Try again</a>`, 400);
@@ -69,10 +76,14 @@ export async function GET(req) {
 }
 
 function htmlResponse(message, status) {
-  return new NextResponse(
+  const res = new NextResponse(
     `<!doctype html><html><body style="font-family:sans-serif;background:#060a08;color:#9affc3;padding:2rem;">
       <p>${message}</p>
     </body></html>`,
     { status, headers: { "Content-Type": "text/html" } }
   );
+  // One-time use: clear it here so a replayed callback URL (with the same
+  // ?state=, say from browser history) can't pass the check a second time.
+  res.cookies.delete("grace_oauth_state", { path: "/api/auth/google" });
+  return res;
 }

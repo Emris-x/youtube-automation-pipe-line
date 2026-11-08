@@ -3,7 +3,7 @@ import { listRuns, getRepoJsonFile } from "../../../lib/github";
 import { checkAppPassword } from "../../../lib/auth";
 
 export async function GET(req) {
-  if (!checkAppPassword(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await checkAppPassword(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const [runs, logged] = await Promise.all([
     listRuns("manual-video.yml", 15).catch(() => []),

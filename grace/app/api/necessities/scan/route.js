@@ -10,7 +10,7 @@ function rawUrl(path) {
 }
 
 export async function POST(req) {
-  if (!checkAppPassword(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await checkAppPassword(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { script_text } = await req.json();
   if (!script_text || script_text.trim().length < 10) {

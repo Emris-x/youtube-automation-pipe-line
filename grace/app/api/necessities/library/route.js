@@ -4,7 +4,7 @@ import { getManifest } from "../../../../lib/library";
 import { OWNER, REPO } from "../../../../lib/github";
 
 export async function GET(req) {
-  if (!checkAppPassword(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await checkAppPassword(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const manifest = await getManifest();
   const images = (manifest.images || []).map((img) => ({
     ...img,

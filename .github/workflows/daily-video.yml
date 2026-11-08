@@ -39,7 +39,7 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           YOUTUBE_CLIENT_SECRET_B64: ${{ secrets.YOUTUBE_CLIENT_SECRET_B64 }}
           YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
-          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
+          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'private' }}
         run: |
           cd src
           if [ "${{ github.event.inputs.upload }}" = "false" ]; then
@@ -57,11 +57,22 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-      - name: Commit updated topic queue
+      - name: Commit updated topic queue + history log
         if: always()
         run: |
           git config user.name "youtube-automation-bot"
           git config user.email "actions@github.com"
-          git add scripts/topics.json scripts/video_*.json
-          git diff --staged --quiet || git commit -m "Mark topic consumed + add generated script [skip ci]"
-          git push
+          # data/history.json added here too -- previously this workflow
+          # never recorded its runs anywhere GRACE could show them, so a
+          # scheduled video (success OR failure) was invisible until you
+          # went and checked the Actions tab yourself.
+          git add scripts/topics.json scripts/video_*.json data/history.json
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "Mark topic consumed + log GRACE run ${{ github.run_id }} [skip ci]"
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push origin main && break
+              sleep $((i * 3))
+            done
+          fi

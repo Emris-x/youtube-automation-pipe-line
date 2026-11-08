@@ -36,31 +36,22 @@ def _materialize_from_env(path, b64_env_var):
             f.write(base64.b64decode(b64).decode("utf-8"))
 
 
-def _get_token_from_grace():
-    """GRACE (the companion app) owns the Google OAuth flow and keeps the
-    refresh token server-side, so the Action never needs client_secret.json
-    or token.json at all — it just asks GRACE for a fresh access token each
-    run. Preferred path when GRACE_TOKEN_URL + GRACE_API_SECRET are set."""
-    url = os.environ.get("GRACE_TOKEN_URL")
-    secret = os.environ.get("GRACE_API_SECRET")
-    if not (url and secret):
-        return None
-    import requests
-    resp = requests.get(url, headers={"Authorization": f"Bearer {secret}"}, timeout=15)
-    resp.raise_for_status()
-    return resp.json()["access_token"]
-
-
 def get_authenticated_service():
+    """Auth path: GRACE's own OAuth connect flow (grace/app/api/auth/google/*)
+    writes a refresh token to the YOUTUBE_TOKEN_B64 repo secret (shaped as
+    the authorized_user JSON google-auth expects), and both workflows pass
+    that secret straight through as an env var. That's the only path now --
+    an earlier GRACE_TOKEN_URL/GRACE_API_SECRET branch here tried to ask
+    GRACE for a live access token over HTTP on every run, but no endpoint
+    for that was ever built in the Next.js app, so it always silently
+    returned None and fell through to this same path anyway. Removed
+    rather than built out: a long-lived refresh token in an encrypted
+    GitHub secret, refreshed locally each run, is simpler and no less
+    secure than minting short-lived tokens over the network every time."""
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
     from googleapiclient.discovery import build
-
-    access_token = _get_token_from_grace()
-    if access_token:
-        creds = Credentials(token=access_token)
-        return build("youtube", "v3", credentials=creds)
 
     _materialize_from_env(CLIENT_SECRET_FILE, "YOUTUBE_CLIENT_SECRET_B64")
     _materialize_from_env(TOKEN_FILE, "YOUTUBE_TOKEN_B64")
@@ -110,7 +101,13 @@ def _check_video_is_real(video_path):
 
 
 def upload_video(video_path, metadata, privacy_status=None):
-    privacy_status = privacy_status or os.environ.get("VIDEO_PRIVACY_STATUS", "public")
+    # "private" by default -- the video still gets made and uploaded, but it
+    # doesn't go live to the public until you explicitly flip the
+    # VIDEO_PRIVACY_STATUS repo variable (Settings -> Secrets and variables
+    # -> Actions -> Variables) to "public" or "unlisted". Previously this
+    # defaulted straight to "public": every successful build published live
+    # immediately, with no review step of any kind.
+    privacy_status = privacy_status or os.environ.get("VIDEO_PRIVACY_STATUS", "private")
     from googleapiclient.http import MediaFileUpload
     from googleapiclient.errors import HttpError
 

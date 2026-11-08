@@ -28,6 +28,22 @@ def _load_json(path, default):
         return default
 
 
+def append_history_entry(entry):
+    """Prepend one entry to data/history.json. Shared by both callers:
+    manual-video.yml invokes this file's CLI (main(), below) after each of
+    its separate workflow steps; run_pipeline.py (the daily/scheduled path,
+    which runs generate->build->upload as one Python process rather than
+    separate steps with their own outcome tracking) calls this directly so
+    scheduled runs show up in GRACE's history too -- they didn't before."""
+    history = _load_json(HISTORY_PATH, [])
+    history.insert(0, entry)
+    history = history[:MAX_ENTRIES]
+
+    os.makedirs(os.path.dirname(HISTORY_PATH), exist_ok=True)
+    with open(HISTORY_PATH, "w") as f:
+        json.dump(history, f, indent=2)
+
+
 def main():
     segment_ok = os.environ.get("SEGMENT_OUTCOME") == "success"
     build_ok = os.environ.get("BUILD_OUTCOME") == "success"
@@ -59,13 +75,7 @@ def main():
         "video_url": result.get("video_url") if upload_ok else None,
     }
 
-    history = _load_json(HISTORY_PATH, [])
-    history.insert(0, entry)
-    history = history[:MAX_ENTRIES]
-
-    os.makedirs(os.path.dirname(HISTORY_PATH), exist_ok=True)
-    with open(HISTORY_PATH, "w") as f:
-        json.dump(history, f, indent=2)
+    append_history_entry(entry)
 
     print(f"Logged run as {status}" + (f" (failed at: {failed_step})" if failed_step else ""))
 

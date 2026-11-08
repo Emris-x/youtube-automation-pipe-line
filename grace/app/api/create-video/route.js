@@ -3,7 +3,7 @@ import { dispatchWorkflow, latestRun, REPO_URL } from "../../../lib/github";
 import { checkAppPassword } from "../../../lib/auth";
 
 export async function POST(req) {
-  if (!checkAppPassword(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await checkAppPassword(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { script_text, title } = await req.json();
   if (!script_text || script_text.trim().length < 20) {
