@@ -1,5 +1,15 @@
 [
   {
+    "run_id": "42492316548",
+    "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42492316548",
+    "timestamp": "2026-11-08T14:59:09.771656+00:00",
+    "title": "\ud83e\udd14",
+    "status": "failed",
+    "failed_step": "build",
+    "error": null,
+    "video_url": null
+  },
+  {
     "run_id": "42481053074",
     "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42481053074",
     "timestamp": "2026-11-08T12:43:42.669905+00:00",
