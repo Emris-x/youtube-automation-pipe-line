@@ -1,5 +1,15 @@
 [
   {
+    "run_id": "42475628727",
+    "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42475628727",
+    "timestamp": "2026-11-08T11:42:32.464861+00:00",
+    "title": "Fish world ",
+    "status": "failed",
+    "failed_step": "build",
+    "error": null,
+    "video_url": null
+  },
+  {
     "run_id": "42468774894",
     "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/42468774894",
     "timestamp": "2026-11-08T09:54:51.635872+00:00",
