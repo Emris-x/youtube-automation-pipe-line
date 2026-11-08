@@ -6,7 +6,7 @@ Pillow for frame drawing + ffmpeg for encoding. Vertical 1080x1920 by
 default — Shorts/Reels format gets far more algorithmic push for a brand
 new channel than long-form, which matters a lot for early traction.
 
-Two visual themes:
+Three visual themes:
 
   "terminal" (DEFAULT) — blueprint/hacker-terminal look: black background,
   faint cyan blueprint grid, scanline flicker, monospace type, terminal
@@ -14,6 +14,12 @@ Two visual themes:
   This is the channel's locked visual identity — distinct from the
   cartoon-explainer look most tech/AI channels use, built for the
   "explain it through real incidents/breaches" angle.
+
+  "light" — the same terminal layout (grid, header bar, typewriter caption,
+  stick figure, icon badges), just re-skinned onto a white/paper
+  background with dark ink type instead of phosphor green on black. Same
+  bones, different skin — picked by rendering through the TERMINAL_PALETTES
+  dict below rather than duplicating all the drawing code.
 
   "gradient" — the original soft dark-gradient + bold sans caption look
   (kept for anyone who wants it / A-B testing against the terminal look).
@@ -39,7 +45,7 @@ import icons as icon_lib
 W, H = 1080, 1920
 FPS = 30
 
-THEME = os.environ.get("VIDEO_THEME", "terminal")  # "terminal" (default) | "gradient"
+THEME = os.environ.get("VIDEO_THEME", "terminal")  # "terminal" (default) | "light" | "gradient"
 # Stick-figure character + contextual keyword icon, layered on top of the
 # existing abstract motif. "off" restores the old backdrop-only look.
 CHARACTERS = os.environ.get("VIDEO_CHARACTERS", "on") != "off"
@@ -85,6 +91,32 @@ TERM_GRID = (0, 180, 190)       # faint cyan blueprint lines
 TERM_GREEN = (60, 255, 140)     # primary phosphor text/accent
 TERM_GREEN_DIM = (40, 120, 90)  # already-spoken / inactive text
 TERM_AMBER = (255, 180, 60)     # CTA / warning accent
+
+# Both "terminal" and "light" share every drawing function below — only the
+# colors differ, selected through this dict. A palette needs: bg, grid (full
+# strength, used for header divider/motif lines), grid_line (pre-dimmed, used
+# for the background grid), ink (primary stroke/text/accent), dim
+# (already-spoken / inactive text), revealed (caption words already typed but
+# not the active one), accent (CTA/warning), header_bg, vignette (bool),
+# vignette_color, scanlines (bool), scanline_color.
+TERMINAL_PALETTES = {
+    "terminal": dict(
+        bg=TERM_BG, grid=TERM_GRID,
+        grid_line=tuple(int(c * 0.22) for c in TERM_GRID),
+        ink=TERM_GREEN, dim=TERM_GREEN_DIM, revealed=(190, 255, 220),
+        accent=TERM_AMBER, header_bg=(14, 20, 18),
+        vignette=True, vignette_color=(0, 0, 0),
+        scanlines=True, scanline_color=(0, 0, 0),
+    ),
+    "light": dict(
+        bg=(250, 249, 245), grid=(120, 140, 150),
+        grid_line=(224, 224, 214),
+        ink=(22, 26, 24), dim=(150, 152, 144), revealed=(70, 74, 70),
+        accent=(214, 72, 42), header_bg=(236, 235, 228),
+        vignette=False, vignette_color=(230, 228, 218),
+        scanlines=False, scanline_color=(238, 237, 230),
+    ),
+}
 
 # Gradient theme (v1) accents, kept for the alt style
 GRADIENT_ACCENTS = {
@@ -151,44 +183,45 @@ def _draw_caption_gradient(draw, active_word_idx, boundaries, accent):
 
 # ---------------------------------------------------------------- terminal (default)
 
-def _terminal_bg(t):
-    """Black background with a faint cyan blueprint grid + slow scanline drift."""
-    img = Image.new("RGB", (W, H), TERM_BG)
+def _terminal_bg(t, pal):
+    """Themed background: faint blueprint grid + (terminal-only) vignette and
+    scanline drift. Same structure for every palette, just different ink."""
+    img = Image.new("RGB", (W, H), pal["bg"])
     draw = ImageDraw.Draw(img)
 
     grid_spacing = 64
     offset = int((t * 8) % grid_spacing)
     for x in range(-offset, W + grid_spacing, grid_spacing):
-        draw.line([(x, 0), (x, H)], fill=tuple(int(c * 0.22) for c in TERM_GRID), width=1)
+        draw.line([(x, 0), (x, H)], fill=pal["grid_line"], width=1)
     for y in range(-offset, H + grid_spacing, grid_spacing):
-        draw.line([(0, y), (W, y)], fill=tuple(int(c * 0.22) for c in TERM_GRID), width=1)
+        draw.line([(0, y), (W, y)], fill=pal["grid_line"], width=1)
 
-    # vignette-ish darkening at edges
-    vignette = Image.new("L", (W, H), 0)
-    vd = ImageDraw.Draw(vignette)
-    vd.ellipse([-200, -200, W + 200, H * 0.9], fill=60)
-    img = Image.composite(img, Image.new("RGB", (W, H), (0, 0, 0)), vignette.point(lambda p: 255 - p))
+    if pal["vignette"]:
+        vignette = Image.new("L", (W, H), 0)
+        vd = ImageDraw.Draw(vignette)
+        vd.ellipse([-200, -200, W + 200, H * 0.9], fill=60)
+        img = Image.composite(img, Image.new("RGB", (W, H), pal["vignette_color"]), vignette.point(lambda p: 255 - p))
 
     draw = ImageDraw.Draw(img)
-    # scanlines
-    for y in range(0, H, 4):
-        draw.line([(0, y), (W, y)], fill=(0, 0, 0), width=1)
+    if pal["scanlines"]:
+        for y in range(0, H, 4):
+            draw.line([(0, y), (W, y)], fill=pal["scanline_color"], width=1)
 
     return img
 
 
-def _terminal_header(draw, t, label="breach_report.sh"):
+def _terminal_header(draw, t, pal, label="breach_report.sh"):
     """Fake terminal title bar — instantly reads as 'hacker/dev' content."""
     bar_h = 86
-    draw.rectangle([0, 0, W, bar_h], fill=(14, 20, 18))
-    draw.line([(0, bar_h), (W, bar_h)], fill=TERM_GRID, width=2)
+    draw.rectangle([0, 0, W, bar_h], fill=pal["header_bg"])
+    draw.line([(0, bar_h), (W, bar_h)], fill=pal["grid"], width=2)
     for i, c in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
         draw.ellipse([40 + i * 48, bar_h / 2 - 14, 68 + i * 48, bar_h / 2 + 14], fill=c)
     font = _font(32, FONT_MONO_SEMI)
-    draw.text((200, bar_h / 2 - 16), f"~/{label}", font=font, fill=TERM_GREEN_DIM)
+    draw.text((200, bar_h / 2 - 16), f"~/{label}", font=font, fill=pal["dim"])
     # blinking cursor-ish clock dots on the right
     dots = "." * (1 + int(t * 2) % 3)
-    draw.text((W - 90, bar_h / 2 - 16), dots, font=font, fill=TERM_GREEN_DIM)
+    draw.text((W - 90, bar_h / 2 - 16), dots, font=font, fill=pal["dim"])
 
 
 def _wrap_words(words, max_chars=16):
@@ -204,10 +237,12 @@ def _wrap_words(words, max_chars=16):
     return groups
 
 
-def _draw_caption_terminal(draw, active_word_idx, boundaries, t):
+def _draw_caption_terminal(draw, active_word_idx, boundaries, t, pal):
     """Typewriter caption: a terminal prompt '>' followed by the current
-    phrase being 'typed' word by word, brighter green on the active word,
-    dimmer on already-revealed words, with a blinking block cursor."""
+    phrase being 'typed' word by word, brighter ink on the active word
+    (with a brief scale-pop the instant it becomes active, so each word
+    lands with a bit of punch instead of just appearing), dimmer on
+    already-revealed words, with a blinking block cursor."""
     words = [b["text"] for b in boundaries]
     groups = _wrap_words(words, max_chars=16)
     running, group_idx, local_idx = 0, 0, 0
@@ -218,7 +253,8 @@ def _draw_caption_terminal(draw, active_word_idx, boundaries, t):
         running += len(g)
     group = groups[group_idx] if groups else words
 
-    font = _font(64, FONT_MONO_BOLD)
+    base_size = 64
+    font = _font(base_size, FONT_MONO_BOLD)
     prompt = "> "
     prompt_w = draw.textlength(prompt, font=font)
 
@@ -228,21 +264,28 @@ def _draw_caption_terminal(draw, active_word_idx, boundaries, t):
     x = (W - total_w) / 2
     y = H * 0.72
 
-    draw.text((x, y), prompt, font=font, fill=TERM_GREEN_DIM)
+    draw.text((x, y), prompt, font=font, fill=pal["dim"])
     x += prompt_w
+
+    # time since this word became the active one, for the pop decay
+    since_active = t - boundaries[active_word_idx]["offset_s"] if boundaries else 1.0
 
     for i, w in enumerate(visible):
         is_active = (i == len(visible) - 1)
-        color = TERM_GREEN if is_active else (190, 255, 220)
-        draw.text((x, y), w, font=font, fill=color)
+        color = pal["ink"] if is_active else pal["revealed"]
+        if is_active and since_active < 0.14:
+            pop_font = _font(int(base_size * (1.0 + 0.22 * (1 - since_active / 0.14))), FONT_MONO_BOLD)
+            draw.text((x, y - (pop_font.size - base_size) * 0.4), w, font=pop_font, fill=color)
+        else:
+            draw.text((x, y), w, font=font, fill=color)
         x += draw.textlength(w, font=font) + space_w
 
     # blinking block cursor
     if int(t * 2.5) % 2 == 0:
-        draw.rectangle([x, y + 6, x + 28, y + 58], fill=TERM_GREEN)
+        draw.rectangle([x, y + 6, x + 28, y + 58], fill=pal["ink"])
 
 
-def _motif_terminal(draw, visual, t):
+def _motif_terminal(draw, visual, t, pal):
     cx, cy = W / 2, H * 0.32
     if visual == "icon_sequence":
         for i in range(6):
@@ -251,7 +294,7 @@ def _motif_terminal(draw, visual, t):
             x = cx + r * math.cos(ang)
             y = cy + r * math.sin(ang) * 0.6
             s = 24 + 6 * math.sin(t * 3 + i)
-            draw.rectangle([x - s, y - s, x + s, y + s], outline=TERM_GRID, width=4)
+            draw.rectangle([x - s, y - s, x + s, y + s], outline=pal["grid"], width=4)
     elif visual == "bar_chart_animate":
         bars = 7
         base_y = cy + 150
@@ -259,55 +302,66 @@ def _motif_terminal(draw, visual, t):
             phase = (t * 1.4 + i * 0.55) % (2 * math.pi)
             h = 70 + 100 * (0.5 + 0.5 * math.sin(phase))
             x0 = cx - 280 + i * 85
-            draw.rectangle([x0, base_y - h, x0 + 48, base_y], outline=TERM_GREEN, width=4)
-            draw.rectangle([x0, base_y - h, x0 + 48, base_y], fill=tuple(int(c * 0.18) for c in TERM_GREEN))
+            draw.rectangle([x0, base_y - h, x0 + 48, base_y], outline=pal["ink"], width=4)
+            draw.rectangle([x0, base_y - h, x0 + 48, base_y], fill=tuple(int(_lerp(pal["bg"][c], pal["ink"][c], 0.18)) for c in range(3)))
     elif visual == "loop_animation":
         r = 190
         start = (t * 85) % 360
-        draw.arc([cx - r, cy - r, cx + r, cy + r], start, start + 240, fill=TERM_GREEN, width=10)
-        draw.arc([cx - r, cy - r, cx + r, cy + r], 0, 360, fill=tuple(int(c * 0.3) for c in TERM_GRID), width=3)
+        draw.arc([cx - r, cy - r, cx + r, cy + r], start, start + 240, fill=pal["ink"], width=10)
+        draw.arc([cx - r, cy - r, cx + r, cy + r], 0, 360, fill=tuple(int(_lerp(pal["bg"][c], pal["grid"][c], 0.3)) for c in range(3)), width=3)
     elif visual == "data_flow":
         for i in range(12):
             phase = (t * 1.0 + i * 0.3) % 1.0
             y = cy - 230 + phase * 460
             x = cx + 150 * math.sin(phase * math.pi * 2 + i)
             s = 6 + 6 * (1 - abs(0.5 - phase) * 2)
-            draw.ellipse([x - s, y - s, x + s, y + s], fill=TERM_GREEN)
+            draw.ellipse([x - s, y - s, x + s, y + s], fill=pal["ink"])
     elif visual == "reveal_text":
         r = 10
         for i in range(8):
             rr = 180 + i * 22 + 10 * math.sin(t * 2)
             alpha = max(0, 1 - i / 8)
-            col = tuple(int(_lerp(TERM_BG[c], TERM_GREEN[c], alpha * 0.25)) for c in range(3))
+            col = tuple(int(_lerp(pal["bg"][c], pal["ink"][c], alpha * 0.25)) for c in range(3))
             draw.ellipse([cx - rr, cy - rr, cx + rr, cy + rr], outline=col, width=2)
     elif visual == "subscribe_animation":
         r = 140 + 22 * math.sin(t * 3)
-        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=TERM_AMBER, width=8)
+        draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=pal["accent"], width=8)
         font = _font(46, FONT_MONO_BOLD)
         txt = "./follow --now"
         tw = draw.textlength(txt, font=font)
-        draw.text((cx - tw / 2, cy - 26), txt, font=font, fill=TERM_AMBER)
+        draw.text((cx - tw / 2, cy - 26), txt, font=font, fill=pal["accent"])
     elif visual == "title_card":
         r = 300
-        draw.arc([cx - r, cy - r, cx + r, cy + r], 0, 300, fill=TERM_GREEN, width=6)
-        draw.arc([cx - r, cy - r, cx + r, cy + r], 320, 360, fill=TERM_AMBER, width=6)
+        draw.arc([cx - r, cy - r, cx + r, cy + r], 0, 300, fill=pal["ink"], width=6)
+        draw.arc([cx - r, cy - r, cx + r, cy + r], 320, 360, fill=pal["accent"], width=6)
 
 
-def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name):
+def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal):
     """Stick figure acting out the scene's pose, plus a small badge icon for
-    whatever the sentence is actually about, when one was detected."""
+    whatever the sentence is actually about, when one was detected. A soft
+    glow pulses behind the figure's head while it's actually speaking, so
+    the sync to the voice reads at a glance, not just via the mouth flap."""
     cx, cy = W / 2, H * 0.58
     talking = stickman.is_speaking(boundaries, t) if boundaries else False
-    stickman.draw_stickman(draw, cx, cy, 62, pose, t, talking, TERM_GREEN, TERM_GREEN_DIM)
+
+    if talking:
+        glow_cx, glow_cy = cx, cy - 62 * 3.4
+        glow_r = 62 * 1.5 + 10 * math.sin(t * 10.0)
+        for i in range(3, 0, -1):
+            rr = glow_r * (1 + i * 0.22)
+            col = tuple(int(_lerp(pal["bg"][c], pal["ink"][c], 0.10 / i)) for c in range(3))
+            draw.ellipse([glow_cx - rr, glow_cy - rr, glow_cx + rr, glow_cy + rr], fill=col)
+
+    stickman.draw_stickman(draw, cx, cy, 62, pose, t, talking, pal["ink"], pal["dim"])
 
     if icon_name:
         bx, by, br = W * 0.80, H * 0.20, 78
         pulse = 1.0 + 0.04 * math.sin(t * 2.2)
         draw.ellipse(
             [bx - br * pulse, by - br * pulse, bx + br * pulse, by + br * pulse],
-            outline=TERM_GRID, width=3,
+            outline=pal["grid"], width=3,
         )
-        icon_lib.draw_icon(draw, icon_name, bx, by, br * 0.55, TERM_GREEN, font=_font(44, FONT_MONO_BOLD))
+        icon_lib.draw_icon(draw, icon_name, bx, by, br * 0.55, pal["ink"], font=_font(44, FONT_MONO_BOLD))
 
 
 def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
@@ -321,6 +375,7 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
     accent = GRADIENT_ACCENTS.get(scene["visual"], (255, 255, 255))
     pose = stickman.pose_for_scene(scene) if CHARACTERS else None
     icon_name = icon_lib.pick_icon_for_text(scene.get("text", "")) if CHARACTERS else None
+    pal = TERMINAL_PALETTES.get(theme)
 
     for f in range(n_frames):
         t = f / fps
@@ -331,15 +386,15 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
             else:
                 break
 
-        if theme == "terminal":
-            img = _terminal_bg(t)
+        if pal is not None:
+            img = _terminal_bg(t, pal)
             draw = ImageDraw.Draw(img)
-            _motif_terminal(draw, scene["visual"], t)
+            _motif_terminal(draw, scene["visual"], t, pal)
             if CHARACTERS:
-                _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name)
-            _terminal_header(draw, t, scene.get("terminal_label", "breach_report.sh"))
+                _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal)
+            _terminal_header(draw, t, pal, scene.get("terminal_label", "breach_report.sh"))
             if boundaries:
-                _draw_caption_terminal(draw, active_idx, boundaries, t)
+                _draw_caption_terminal(draw, active_idx, boundaries, t, pal)
         else:
             img = _gradient_bg(accent, t)
             draw = ImageDraw.Draw(img)
