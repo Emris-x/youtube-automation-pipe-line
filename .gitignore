@@ -10,3 +10,5 @@ scripts/last_result.json
 *.mp3
 *.mp4
 *.wav
+grace/node_modules/
+grace/.next/

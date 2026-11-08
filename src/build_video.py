@@ -12,6 +12,7 @@ import sys
 from script_tools import load_script
 from tts import generate as tts_generate
 from motion import render_scene
+from music import generate_ambient_wav
 
 # Anchored to the repo root (not the shell's cwd) because the GitHub Actions
 # workflow does `cd src` before each step — with a plain relative "output",
@@ -21,6 +22,22 @@ from motion import render_scene
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 AUDIO_DIR = os.path.join(_BASE_DIR, "..", "audio")
 OUTPUT_DIR = os.path.join(_BASE_DIR, "..", "output")
+
+MUSIC = os.environ.get("VIDEO_MUSIC", "on") != "off"
+
+# Sidechain-ducked under the narration: music stays quiet (threshold near
+# the noise floor) and compresses hard+fast whenever the voice is present,
+# releasing slowly back up in the gaps between lines. The voice stream is
+# split into two copies (asplit) because it's consumed twice -- once as the
+# sidechain control signal, once as the actual thing we mix back in --
+# and ffmpeg filtergraphs don't allow reusing one link label as two inputs
+# without an explicit split.
+_MUSIC_FILTER = (
+    "[0:a]aformat=sample_rates=44100:channel_layouts=stereo,asplit=2[voice1][voice2];"
+    "[1:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=0.55[mus];"
+    "[mus][voice1]sidechaincompress=threshold=0.04:ratio=10:attack=5:release=400[duck];"
+    "[voice2][duck]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+)
 
 
 def build(script_path, out_name=None, tts_engine=None, theme=None):
@@ -76,19 +93,53 @@ def build(script_path, out_name=None, tts_engine=None, theme=None):
 
     final_path = os.path.join(OUTPUT_DIR, f"{out_name}.mp4")
     print("Concatenating scenes into final video...")
+
+    music_path = None
+    if MUSIC:
+        music_path = os.path.join(AUDIO_DIR, f"{out_name}_music.wav")
+        try:
+            generate_ambient_wav(music_path, total_duration + 1.0)
+            print("[music] generated background ambient track")
+        except Exception as e:
+            print(f"[music] generation failed ({e.__class__.__name__}: {e}), continuing without it")
+            music_path = None
+
     try:
-        subprocess.run([
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
-            "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", final_path,
-        ], check=True, capture_output=True)
+        if music_path:
+            subprocess.run([
+                "ffmpeg", "-y",
+                "-f", "concat", "-safe", "0", "-i", concat_list,
+                "-i", music_path,
+                "-filter_complex", _MUSIC_FILTER,
+                "-map", "0:v", "-map", "[aout]",
+                "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", "-shortest", final_path,
+            ], check=True, capture_output=True)
+        else:
+            subprocess.run([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+                "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", final_path,
+            ], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         print(f"[concat] ffmpeg failed (exit {e.returncode}):\n{e.stderr.decode(errors='replace')}")
-        raise
+        if music_path:
+            print("[concat] retrying without background music in case the sidechain filter was the problem...")
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list,
+                    "-c:v", "libx264", "-c:a", "aac", "-pix_fmt", "yuv420p", final_path,
+                ], check=True, capture_output=True)
+            except subprocess.CalledProcessError as e2:
+                print(f"[concat] plain concat also failed (exit {e2.returncode}):\n{e2.stderr.decode(errors='replace')}")
+                raise
+        else:
+            raise
 
     # cleanup intermediate scene files
     for clip in scene_clips:
         os.remove(clip)
     os.remove(concat_list)
+    if music_path and os.path.exists(music_path):
+        os.remove(music_path)
 
     print(f"\nDone: {final_path}  (~{total_duration:.1f}s)")
     return final_path

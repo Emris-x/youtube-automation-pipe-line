@@ -41,6 +41,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 import stickman
 import icons as icon_lib
+import library
 
 W, H = 1080, 1920
 FPS = 30
@@ -364,6 +365,60 @@ def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal):
         icon_lib.draw_icon(draw, icon_name, bx, by, br * 0.55, pal["ink"], font=_font(44, FONT_MONO_BOLD))
 
 
+_SCENE_IMAGE_REVEAL_S = 0.45  # how long the pop-in/fade-in takes
+
+
+def _ease_out_back(x):
+    """Overshoots slightly past 1.0 then settles -- a little "pop" as the
+    picture draws itself in, per the brief, rather than a flat linear scale."""
+    c1 = 1.70158
+    c3 = c1 + 1
+    return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2
+
+
+def _load_scene_image(path, max_w=640, max_h=640):
+    """Loads + downscales a library image once per scene (not per frame)."""
+    try:
+        img = Image.open(path).convert("RGBA")
+    except Exception as e:
+        print(f"[motion] couldn't load library image {path}: {e}")
+        return None
+    w, h = img.size
+    scale = min(max_w / w, max_h / h, 1.0)
+    new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+    return img.resize(new_size, Image.LANCZOS) if new_size != (w, h) else img
+
+
+def _draw_scene_image(base_img, draw, scene_image, t, pal):
+    """Pastes the scene's matched library image into a framed card, with a
+    brief ease-out-back scale+fade pop-in as the scene starts -- "objects
+    draw themselves in" per the brief -- instead of the abstract procedural
+    motif. Replaces _motif_terminal for this scene when a match exists."""
+    cx, cy = W / 2, H * 0.34
+    iw, ih = scene_image.size
+
+    progress = min(1.0, t / _SCENE_IMAGE_REVEAL_S)
+    scale = max(0.05, _ease_out_back(progress))
+    disp_w, disp_h = max(2, int(iw * scale)), max(2, int(ih * scale))
+
+    frame_img = scene_image.resize((disp_w, disp_h), Image.LANCZOS) if scale != 1.0 else scene_image
+
+    alpha_mult = min(1.0, progress / 0.6)
+    if alpha_mult < 1.0:
+        alpha = frame_img.split()[-1].point(lambda a: int(a * alpha_mult))
+        frame_img = frame_img.copy()
+        frame_img.putalpha(alpha)
+
+    px, py = int(cx - disp_w / 2), int(cy - disp_h / 2)
+
+    pad = 18
+    draw.rounded_rectangle(
+        [px - pad, py - pad, px + disp_w + pad, py + disp_h + pad],
+        radius=14, outline=pal["grid"], width=3, fill=pal["bg"],
+    )
+    base_img.paste(frame_img, (px, py), frame_img)
+
+
 def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
     theme = theme or THEME
     duration = boundaries[-1]["offset_s"] + boundaries[-1]["duration_s"] if boundaries else 3.0
@@ -377,6 +432,14 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
     icon_name = icon_lib.pick_icon_for_text(scene.get("text", "")) if CHARACTERS else None
     pal = TERMINAL_PALETTES.get(theme)
 
+    scene_image = None
+    if pal is not None:
+        image_path = library.best_match(scene.get("keywords", []))
+        if image_path:
+            scene_image = _load_scene_image(image_path)
+            if scene_image:
+                print(f"[{scene.get('id', '?')}] using library image: {os.path.basename(image_path)}")
+
     for f in range(n_frames):
         t = f / fps
         active_idx = 0
@@ -389,7 +452,10 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
         if pal is not None:
             img = _terminal_bg(t, pal)
             draw = ImageDraw.Draw(img)
-            _motif_terminal(draw, scene["visual"], t, pal)
+            if scene_image is not None:
+                _draw_scene_image(img, draw, scene_image, t, pal)
+            else:
+                _motif_terminal(draw, scene["visual"], t, pal)
             if CHARACTERS:
                 _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal)
             _terminal_header(draw, t, pal, scene.get("terminal_label", "breach_report.sh"))

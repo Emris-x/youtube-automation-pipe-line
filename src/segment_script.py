@@ -13,7 +13,7 @@ import json
 import re
 import sys
 
-from icons import matched_keywords
+from icons import matched_keywords, brand_tags
 
 MID_VISUALS = ["icon_sequence", "bar_chart_animate", "loop_animation", "data_flow", "bullet_reveal"]
 
@@ -70,7 +70,8 @@ def text_to_script(raw_text, title=None, terminal_label="script.log"):
         else:
             sid = f"point{i}"
             visual = MID_VISUALS[(i - 1) % len(MID_VISUALS)]
-        scenes.append({"id": sid, "text": para, "visual": visual, "keywords": matched_keywords(para)})
+        keywords = list(dict.fromkeys(matched_keywords(para) + brand_tags(para)))  # dedupe, keep order
+        scenes.append({"id": sid, "text": para, "visual": visual, "keywords": keywords})
 
     first_line = paragraphs[0][:70].rsplit(" ", 1)[0]
     return {

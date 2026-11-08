@@ -77,4 +77,26 @@ export async function getRepoJsonFile(path) {
   }
 }
 
+/** Reads a repo file's raw content + sha (sha is required when overwriting
+ * an existing file via putRepoFile). Returns null if the file is missing. */
+export async function getRepoFile(path) {
+  try {
+    const file = await ghFetch(`/repos/${OWNER}/${REPO}/contents/${path}?ref=main`);
+    return { sha: file.sha, content: file.content, text: Buffer.from(file.content, "base64").toString("utf-8") };
+  } catch {
+    return null;
+  }
+}
+
+/** Creates or updates a repo file via the Contents API. base64Content is the
+ * file's full new content, already base64-encoded. Pass sha when
+ * overwriting an existing file (omit it to create a new one). */
+export async function putRepoFile(path, base64Content, message, sha) {
+  return ghFetch(`/repos/${OWNER}/${REPO}/contents/${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, content: base64Content, branch: "main", ...(sha ? { sha } : {}) }),
+  });
+}
+
 export const REPO_URL = `https://github.com/${OWNER}/${REPO}`;

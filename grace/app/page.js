@@ -29,6 +29,11 @@ export default function Page() {
   const [history, setHistory] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [graceTimeItem, setGraceTimeItem] = useState(null); // item currently shown full-screen, or null
+  const [necessities, setNecessities] = useState(null); // scanned scenes, or null before first scan
+  const [necessitiesLoading, setNecessitiesLoading] = useState(false);
+  const [necessitiesError, setNecessitiesError] = useState(null);
+  const [uploadingSceneId, setUploadingSceneId] = useState(null);
+  const [copiedSceneId, setCopiedSceneId] = useState(null);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("grace_pw") : null;
@@ -58,6 +63,95 @@ export default function Page() {
   useEffect(() => {
     if (unlocked && tab === "history") loadHistory();
   }, [unlocked, tab]);
+
+  function scanNecessities() {
+    if (!script.trim()) {
+      setNecessitiesError("Paste a script on the create tab first.");
+      return;
+    }
+    setNecessitiesLoading(true);
+    setNecessitiesError(null);
+    authedFetch("/api/necessities/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script_text: script }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) setNecessitiesError(d.error);
+        else setNecessities(d.scenes || []);
+      })
+      .catch((e) => setNecessitiesError(e.message))
+      .finally(() => setNecessitiesLoading(false));
+  }
+
+  useEffect(() => {
+    if (unlocked && tab === "necessities" && necessities === null && !necessitiesLoading) scanNecessities();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unlocked, tab]);
+
+  function copyPrompt(sceneId, text) {
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+    setCopiedSceneId(sceneId);
+    setTimeout(() => setCopiedSceneId((cur) => (cur === sceneId ? null : cur)), 1500);
+  }
+
+  // Downscales/re-encodes an uploaded image client-side before it goes over
+  // the wire -- keeps payloads small and every library image a consistent
+  // max size, regardless of what the generator handed back.
+  function resizeImageToDataUrl(file, maxDim = 1080) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        img.onerror = reject;
+        img.onload = () => {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function uploadForScene(scene, file) {
+    setUploadingSceneId(scene.id);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      const res = await authedFetch("/api/necessities/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          data_base64: dataUrl,
+          tags: scene.tags.length ? scene.tags : [scene.id],
+          title,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setNecessitiesError(data.error || "Upload failed.");
+      } else {
+        setNecessities((cur) =>
+          cur.map((s) => (s.id === scene.id ? { ...s, covered: true, matches: [...s.matches, data.image] } : s))
+        );
+      }
+    } catch (e) {
+      setNecessitiesError(e.message);
+    }
+    setUploadingSceneId(null);
+  }
 
   function enter() {
     localStorage.setItem("grace_pw", pw);
@@ -113,6 +207,7 @@ export default function Page() {
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
         <TabButton active={tab === "create"} onClick={() => setTab("create")}>create</TabButton>
+        <TabButton active={tab === "necessities"} onClick={() => setTab("necessities")}>necessities</TabButton>
         <TabButton active={tab === "history"} onClick={() => setTab("history")}>history</TabButton>
       </div>
 
@@ -164,6 +259,107 @@ export default function Page() {
             </p>
           )}
         </>
+      )}
+
+      {tab === "necessities" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ color: DIM, fontSize: 13 }}>
+              scans the script on the create tab for what pictures it needs
+            </span>
+            <button onClick={scanNecessities} style={{ ...buttonStyle, padding: "4px 10px", fontSize: 13 }}>
+              {necessitiesLoading ? "..." : "rescan"}
+            </button>
+          </div>
+
+          {necessitiesError && <p style={{ color: "#ff8c8c", fontSize: 13 }}>{necessitiesError}</p>}
+          {necessitiesLoading && necessities === null && <p style={{ color: DIM }}>scanning...</p>}
+          {!necessitiesLoading && necessities !== null && necessities.length === 0 && (
+            <p style={{ color: DIM }}>No scenes found — check the script on the create tab.</p>
+          )}
+
+          {necessities && necessities.length > 0 && (
+            <p style={{ color: DIM, fontSize: 13, marginBottom: 14 }}>
+              {necessities.filter((s) => s.covered).length}/{necessities.length} scenes already have a picture in the library.
+            </p>
+          )}
+
+          {necessities && necessities.map((scene) => (
+            <div
+              key={scene.id}
+              style={{
+                border: `1px solid ${scene.covered ? DIM : "#ff8c8c"}`,
+                borderRadius: 6,
+                padding: "10px 12px",
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#eafff2", fontSize: 13 }}>{scene.text}</span>
+                <span style={{ color: scene.covered ? GREEN : "#ff8c8c", fontSize: 12, whiteSpace: "nowrap" }}>
+                  {scene.covered ? "✓ have it" : "needs one"}
+                </span>
+              </div>
+
+              {scene.tags.length > 0 && (
+                <div style={{ color: DIM, fontSize: 12, marginTop: 6 }}>tags: {scene.tags.join(", ")}</div>
+              )}
+
+              {scene.matches.length > 0 && (
+                <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  {scene.matches.map((m) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={m.id}
+                      src={m.url}
+                      alt={m.tags ? m.tags.join(", ") : m.id}
+                      style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 4, border: `1px solid ${DIM}` }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div
+                style={{
+                  marginTop: 8,
+                  background: "#0b1310",
+                  border: `1px solid ${DIM}`,
+                  borderRadius: 4,
+                  padding: "8px 10px",
+                  fontSize: 12,
+                  color: "#cfe9db",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {scene.prompt}
+              </div>
+
+              <div style={{ display: "flex", gap: 14, marginTop: 8, alignItems: "center" }}>
+                <button
+                  onClick={() => copyPrompt(scene.id, scene.prompt)}
+                  style={{ background: "none", border: "none", color: GREEN, fontFamily: "inherit", fontSize: 13, cursor: "pointer", padding: 0 }}
+                >
+                  {copiedSceneId === scene.id ? "copied ✓" : "copy prompt →"}
+                </button>
+
+                <label style={{ color: DIM, fontSize: 13, cursor: "pointer" }}>
+                  {uploadingSceneId === scene.id ? "uploading..." : "upload →"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    disabled={uploadingSceneId === scene.id}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) uploadForScene(scene, file);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {tab === "history" && (

@@ -53,6 +53,31 @@ def matched_keywords(text):
     return found
 
 
+_STOPWORD_CAPS = {
+    "The", "A", "An", "So", "But", "And", "It", "This", "That", "When", "If",
+    "As", "Then", "Now", "Once", "In", "On", "For", "With", "After", "Before",
+}
+
+
+def brand_tags(text):
+    """Capitalized words that read as a proper noun / brand name (e.g.
+    "Facebook", "AWS"), lowercased -- mirrors grace/lib/keywords.js's
+    extractKeywords() proper-noun pass; keep the two in sync by hand. Lets
+    a scene mentioning a named company match a library image someone
+    tagged with that company's name specifically, not just the generic
+    keyword category."""
+    tags = []
+    at_sentence_start = True
+    for w in text.split():
+        clean = re.sub(r"[^A-Za-z]", "", w)
+        is_start = at_sentence_start
+        at_sentence_start = bool(re.search(r"[.!?][\"'\)\]]*$", w))
+        if len(clean) < 3 or not clean[0].isupper() or is_start or clean in _STOPWORD_CAPS:
+            continue
+        tags.append(clean.lower())
+    return tags
+
+
 # ---------------------------------------------------------------- drawing
 
 def _plane(draw, cx, cy, s, color):
