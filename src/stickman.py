@@ -3,6 +3,17 @@ GRACE's in-video narrator character -- drawn with plain PIL line primitives
 so it inherits the exact hacker-terminal line-art look everything else
 uses (no raster assets, nothing to download, nothing that goes stale).
 
+v3: bobble-head proportions (bigger head, filled instead of outline-only,
+visible ears) and googly eyes (a white sclera circle + a small pupil,
+instead of a solid dot) -- modeled after the expressive big-head "stickman
+animation" style (character art over an illustrated scene, big round
+expressive heads with ears) rather than the earlier minimal blueprint
+figure. The fill is a fixed near-white regardless of the per-video accent
+color, since it needs to read the same way against the dark hacker-terminal
+background and against an uploaded photo backdrop; the outline and
+features still use the passed-in `color` so the figure stays tied to
+whatever accent color a given video/channel is using.
+
 v2: a real angle-based skeleton animated by keyframes + eased tweening,
 instead of v1's per-limb sine formulas. Every pose is a short looping
 sequence of named keyframes (limb angles, a torso lean, a vertical bob,
@@ -173,14 +184,30 @@ def _angle_to(origin, target):
     the exact "horn, not a hand" bug the facepalm pose's bent elbow was
     built to avoid. There's no elbow bend here, so instead the angle is
     capped short of vertical, which still reads as "pointing up at that"
-    (arm raised and angled toward it) without the line crossing the skull."""
+    (arm raised and angled toward it) without the line crossing the
+    skull -- and with v3's bigger bobble head (see module docstring),
+    the safe cap is noticeably tighter than it was for the old, smaller
+    head: a shoulder-to-hand segment is short relative to the bigger
+    head's radius, so even an endpoint that's technically outside the
+    head can have most of its length swallowed under it once the head
+    (filled, drawn last) paints over everything beneath it. 100 degrees
+    leaves a clearly visible stretch of arm outside the head rather than
+    just a sliver poking out at the rim."""
     dx, dy = target[0] - origin[0], target[1] - origin[1]
     angle = math.degrees(math.atan2(dx, dy))
-    if angle > 120:
-        angle = 120
-    elif angle < -120:
-        angle = -120
+    if angle > 100:
+        angle = 100
+    elif angle < -100:
+        angle = -100
     return angle
+
+
+# Fixed head/ear fill -- deliberately not derived from the channel's
+# accent color (see module docstring): a near-white bobble-head reads
+# cleanly against both the dark procedural background and an uploaded
+# photo backdrop, where a colored or transparent head would either clash
+# or disappear.
+_SKIN = (240, 236, 224)
 
 
 def _draw_face(draw, head_cx, head_cy, s, face, talking, t, color, dim_color):
@@ -209,7 +236,10 @@ def _draw_face(draw, head_cx, head_cy, s, face, talking, t, color, dim_color):
 
     eye_y = head_cy - 0.02 * s
     eye_dx = 0.34 * s
-    eye_r = {"shock": 0.17, "alert": 0.14}.get(face, 0.12) * s
+    # Bigger than v2's solid dots -- a googly-eye look (white sclera +
+    # a smaller dark pupil) instead of a plain filled circle, to match
+    # the bobble-head character's bigger, more expressive eyes.
+    eye_r = {"shock": 0.26, "alert": 0.20}.get(face, 0.17) * s
     if blinking:
         for ex in (-eye_dx, eye_dx):
             draw.line([(head_cx + ex - eye_r, eye_y), (head_cx + ex + eye_r, eye_y)], fill=color, width=w)
@@ -217,8 +247,11 @@ def _draw_face(draw, head_cx, head_cy, s, face, talking, t, color, dim_color):
         for ex in (-eye_dx, eye_dx):
             draw.arc([head_cx + ex - eye_r, eye_y - eye_r * 0.5, head_cx + ex + eye_r, eye_y + eye_r * 1.3], 10, 170, fill=color, width=w)
     else:
+        pupil_r = eye_r * 0.44
         for ex in (-eye_dx, eye_dx):
-            draw.ellipse([head_cx + ex - eye_r, eye_y - eye_r, head_cx + ex + eye_r, eye_y + eye_r], fill=color)
+            ex_c = head_cx + ex
+            draw.ellipse([ex_c - eye_r, eye_y - eye_r, ex_c + eye_r, eye_y + eye_r], fill=_SKIN, outline=color, width=max(2, w - 1))
+            draw.ellipse([ex_c - pupil_r, eye_y - pupil_r, ex_c + pupil_r, eye_y + pupil_r], fill=color)
 
     mouth_y = head_cy + 0.42 * s
     if talking and (t * 6.0) % 1.0 < 0.5:
@@ -297,17 +330,22 @@ def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color, mirro
     draw.ellipse([hip[0] - joint_r, hip[1] - joint_r, hip[0] + joint_r, hip[1] + joint_r], fill=color)
 
     # arms (from neck/shoulder). Most poses use one straight shoulder-to-hand
-    # segment ("l_arm"/"r_arm"); a pose that needs the hand to land ON the
-    # head (facepalm) instead supplies "l_upper"/"l_fore" (or the r_
-    # equivalents) for a real bent elbow -- a straight segment long enough
-    # to reach the face runs clean through the skull instead of resting on it.
+    # segment ("l_arm"/"r_arm") -- those draw now, before the head, same as
+    # always. A pose that needs the hand to land ON the head (facepalm)
+    # instead supplies "l_upper"/"l_fore" (or the r_ equivalents) for a
+    # real bent elbow -- and since v3's head is filled rather than
+    # outline-only (module docstring), a resting hand has to be drawn
+    # AFTER the head/face, not before, or the now-opaque head simply
+    # paints over it. So bent-arm segments are collected here and drawn
+    # later, once the head is down. (Straight segments don't need this --
+    # they gesture beside the head, not onto it.)
+    _pending_bent_arms = []
+
     def _draw_arm(prefix):
         if f"{prefix}_upper" in kf:
-            elbow = _limb_point(neck, s * 0.95, kf[f"{prefix}_upper"])
-            hand = _limb_point(elbow, s * 0.8, kf[f"{prefix}_fore"])
-            draw.line([neck, elbow], fill=color, width=w)
-            draw.line([elbow, hand], fill=color, width=w)
-            draw.ellipse([elbow[0] - joint_r * 0.8, elbow[1] - joint_r * 0.8, elbow[0] + joint_r * 0.8, elbow[1] + joint_r * 0.8], fill=color)
+            elbow = _limb_point(neck, s * 1.2, kf[f"{prefix}_upper"])
+            hand = _limb_point(elbow, s * 1.0, kf[f"{prefix}_fore"])
+            _pending_bent_arms.append((neck, elbow, hand))
             return hand
         hand = _limb_point(neck, s * 1.95, kf[f"{prefix}_arm"])
         draw.line([neck, hand], fill=color, width=w)
@@ -316,11 +354,31 @@ def draw_stickman(draw, cx, cy, scale, pose, t, talking, color, dim_color, mirro
     l_hand = _draw_arm("l")
     r_hand = _draw_arm("r")
     draw.ellipse([neck[0] - joint_r, neck[1] - joint_r, neck[0] + joint_r, neck[1] + joint_r], fill=color)
-    for hand in (l_hand, r_hand):
-        draw.ellipse([hand[0] - joint_r * 0.8, hand[1] - joint_r * 0.8, hand[0] + joint_r * 0.8, hand[1] + joint_r * 0.8], fill=color)
+    # Hand/elbow joint dots for a bent arm are drawn along with the arm
+    # itself below (on top of the head); only a straight arm's hand dot
+    # belongs here, underneath.
+    for prefix, hand in (("l", l_hand), ("r", r_hand)):
+        if f"{prefix}_upper" not in kf:
+            draw.ellipse([hand[0] - joint_r * 0.8, hand[1] - joint_r * 0.8, hand[0] + joint_r * 0.8, hand[1] + joint_r * 0.8], fill=color)
 
-    # head -- slightly bigger than the old figure's, rounder/bolder outline
-    head_r = s * 1.04
-    draw.ellipse([head_cx - head_r, head_cy - head_r, head_cx + head_r, head_cy + head_r], outline=color, width=w)
+    # head -- bigger bobble-head proportions than v2's outline-only circle,
+    # filled so it reads solidly against either background, with ears
+    # (drawn first so the head's own outline overlaps and seats them
+    # cleanly rather than them floating as separate detached circles).
+    head_r = s * 1.28
+    ear_r = head_r * 0.24
+    ear_y = head_cy + head_r * 0.08
+    for ex in (-1, 1):
+        ear_cx = head_cx + ex * head_r * 0.94
+        draw.ellipse([ear_cx - ear_r, ear_y - ear_r, ear_cx + ear_r, ear_y + ear_r], fill=_SKIN, outline=color, width=max(2, w - 1))
+    draw.ellipse([head_cx - head_r, head_cy - head_r, head_cx + head_r, head_cy + head_r], fill=_SKIN, outline=color, width=w)
 
     _draw_face(draw, head_cx, head_cy, s, data["face"], talking, t, color, dim_color)
+
+    # Now lay any bent (on-face) arm on top, so it reads as a hand resting
+    # on the face instead of vanishing under it.
+    for neck_pt, elbow, hand in _pending_bent_arms:
+        draw.line([neck_pt, elbow], fill=color, width=w)
+        draw.line([elbow, hand], fill=color, width=w)
+        draw.ellipse([elbow[0] - joint_r * 0.8, elbow[1] - joint_r * 0.8, elbow[0] + joint_r * 0.8, elbow[1] + joint_r * 0.8], fill=color)
+        draw.ellipse([hand[0] - joint_r * 0.8, hand[1] - joint_r * 0.8, hand[0] + joint_r * 0.8, hand[1] + joint_r * 0.8], fill=color)
