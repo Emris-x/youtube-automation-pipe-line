@@ -337,6 +337,9 @@ def _motif_terminal(draw, visual, t, pal):
         draw.arc([cx - r, cy - r, cx + r, cy + r], 320, 360, fill=pal["accent"], width=6)
 
 
+_BACKDROP_CHAR_CX, _BACKDROP_CHAR_CY = W * 0.24, H * 0.76  # the stickman's anchor when standing on a photo backdrop
+
+
 def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, backdrop=False):
     """Stick figure acting out the scene's pose, plus a small badge icon for
     whatever the sentence is actually about, when one was detected. A soft
@@ -348,9 +351,14 @@ def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, b
     picture's main subject -- and always uses the "point" pose, so it
     visibly reads as "look at this" rather than overlapping the photo's
     center. The badge icon is skipped there too; the photo already shows
-    what the scene is about."""
+    what the scene is about. (The dark grounding patch behind it that
+    makes the plain green linework read as "standing in the scene" rather
+    than a flat outline pasted on top is pasted separately, in
+    render_scene, before this is called -- it needs to sit under the
+    photo's own gradient overlay but it's alpha-blended, which plain
+    ImageDraw calls on `draw` can't do.)"""
     if backdrop:
-        cx, cy = W * 0.24, H * 0.76
+        cx, cy = _BACKDROP_CHAR_CX, _BACKDROP_CHAR_CY
         pose = "point"
     else:
         cx, cy = W / 2, H * 0.58
@@ -374,6 +382,28 @@ def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, b
             outline=pal["grid"], width=3,
         )
         icon_lib.draw_icon(draw, icon_name, bx, by, br * 0.55, pal["ink"], font=_font(44, FONT_MONO_BOLD))
+
+
+_GROUND_SHADOW_CACHE = None
+
+
+def _ground_shadow_rgba():
+    """Soft dark radial patch, precomputed once and cached, pasted behind
+    the stickman whenever it's standing on a photo backdrop -- without it,
+    the flat green linework has nothing to visually sit on and reads as a
+    transparent outline stapled on top of the photo rather than a
+    character actually standing in the scene."""
+    global _GROUND_SHADOW_CACHE
+    if _GROUND_SHADOW_CACHE is not None:
+        return _GROUND_SHADOW_CACHE
+    rw, rh = 460, 520
+    shadow = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    cx, cy = rw / 2, rh * 0.56
+    for rx, ry, a in [(230, 260, 90), (175, 200, 65), (115, 135, 45)]:
+        sd.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=(3, 5, 4, a))
+    _GROUND_SHADOW_CACHE = shadow
+    return _GROUND_SHADOW_CACHE
 
 
 _BACKDROP_MAX_DIM = 1600  # load bigger than the old inset card -- this now fills the whole 1080x1920 frame
@@ -408,6 +438,14 @@ def _backdrop_motion(scene_id):
     pan_dy = ((seed * 13) % 7 - 3) / 3.0
     return zoom_in, pan_dx, pan_dy
 
+
+# Ken Burns speed, in zoom-fraction / pan-fraction PER SECOND of scene
+# time -- a 1s scene and a 6s scene now move at the same visual speed,
+# they just cover different total distances, instead of both always
+# traveling the full range regardless of how long they actually run for.
+_BACKDROP_ZOOM_RATE_S = 0.018   # +1.8%/s zoom
+_BACKDROP_MAX_ZOOM_DELTA = 0.16  # cap even for a long scene
+_BACKDROP_PAN_RATE_S = 0.16      # fraction of the available pan room per second
 
 _BACKDROP_OVERLAY_CACHE = None
 
@@ -446,19 +484,28 @@ def _draw_scene_backdrop(img, scene_image, t, duration, scene_id):
     *every frame of the whole scene*, which was slow enough to blow past
     the build's time budget. BILINEAR instead of LANCZOS too: at this
     resize ratio, for a continuously panning/zooming backdrop, the
-    difference isn't visible, and it's meaningfully cheaper per frame."""
+    difference isn't visible, and it's meaningfully cheaper per frame.
+
+    The zoom/pan amount is rate-limited to a fixed speed per second of
+    scene time, not a fixed fraction of the scene's length -- the first
+    version always traveled the SAME total distance whether the scene was
+    1 second or 6 seconds long, so a short scene panned/zoomed much
+    faster, visibly carrying the picture's subject out of frame before
+    its line of narration even finished."""
     iw, ih = scene_image.size
     zoom_in, pan_dx, pan_dy = _backdrop_motion(scene_id)
     progress = min(1.0, t / max(duration, 0.1))
 
-    z0, z1 = (1.0, 1.14) if zoom_in else (1.14, 1.0)
+    zoom_delta = min(_BACKDROP_MAX_ZOOM_DELTA, _BACKDROP_ZOOM_RATE_S * duration)
+    z0, z1 = (1.0, 1.0 + zoom_delta) if zoom_in else (1.0 + zoom_delta, 1.0)
     zoom = _lerp(z0, z1, progress)
     cover = max(W / iw, H / ih) * zoom
 
+    pan_amount = min(1.0, _BACKDROP_PAN_RATE_S * duration)
     src_w, src_h = W / cover, H / cover
     max_off_x, max_off_y = max(0.0, iw - src_w), max(0.0, ih - src_h)
-    sx = max(0.0, min(max_off_x, (max_off_x / 2) * (1 + pan_dx * progress)))
-    sy = max(0.0, min(max_off_y, (max_off_y / 2) * (1 + pan_dy * progress)))
+    sx = max(0.0, min(max_off_x, (max_off_x / 2) * (1 + pan_dx * pan_amount * progress)))
+    sy = max(0.0, min(max_off_y, (max_off_y / 2) * (1 + pan_dy * pan_amount * progress)))
 
     frame_img = scene_image.resize((W, H), Image.BILINEAR, box=(sx, sy, sx + src_w, sy + src_h))
     img.paste(frame_img, (0, 0))
@@ -501,6 +548,11 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
             if scene_image is not None:
                 img = Image.new("RGB", (W, H), pal["bg"])
                 _draw_scene_backdrop(img, scene_image, t, duration, scene.get("id"))
+                if CHARACTERS:
+                    shadow = _ground_shadow_rgba()
+                    sx = int(_BACKDROP_CHAR_CX - shadow.width / 2)
+                    sy = int(_BACKDROP_CHAR_CY - shadow.height * 0.42)
+                    img.paste(shadow, (sx, sy), shadow)
                 draw = ImageDraw.Draw(img)
             else:
                 img = _terminal_bg(t, pal)
