@@ -1,0 +1,104 @@
+name: Scripts Queue (scheduled)
+
+# Ticks hourly -- NOT the actual posting cadence. The real schedule
+# (how often, or whether this is even on) lives in data/schedule.json,
+# set from the Scripts tab in GRACE. Every tick, dispatch_queue.py checks
+# that file and only pops + builds a script when it's actually due; most
+# ticks are a no-op that exits in a couple seconds. GitHub's scheduler
+# can't fire reliably more often than this anyway (often a few minutes
+# late even at "every 5 min"), so hourly is the finest real control this
+# gives you -- pick "every N hours" or "daily" from the app, not minutes.
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {} # manual "run a tick right now" for testing
+
+permissions:
+  contents: write
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-firacode fonts-dejavu-core
+          ffmpeg -version >/dev/null
+          ffprobe -version >/dev/null
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check whether a queued script is due
+        id: dispatch
+        run: |
+          cd src
+          python dispatch_queue.py ../scripts/manual_video.json
+
+      - name: Build video
+        id: build
+        if: steps.dispatch.outputs.due == 'true'
+        continue-on-error: true
+        run: |
+          cd src
+          python build_video.py ../scripts/manual_video.json
+
+      - name: Upload to YouTube
+        id: upload
+        if: steps.dispatch.outputs.due == 'true' && steps.build.outcome == 'success'
+        continue-on-error: true
+        env:
+          YOUTUBE_CLIENT_SECRET_B64: ${{ secrets.YOUTUBE_CLIENT_SECRET_B64 }}
+          YOUTUBE_TOKEN_B64: ${{ secrets.YOUTUBE_TOKEN_B64 }}
+          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'private' }}
+        run: |
+          cd src
+          python upload.py --video ../output/manual_video.mp4 --metadata ../scripts/manual_video.json
+
+      - name: Upload video as a workflow artifact too (backup)
+        if: steps.dispatch.outputs.due == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-${{ github.run_id }}
+          path: output/*.mp4
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Record result (queue entry + history)
+        if: steps.dispatch.outputs.due == 'true'
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          cd src
+          python dispatch_queue.py --finalize
+
+      - name: Commit queue + schedule + history updates
+        if: always()
+        run: |
+          git config user.name "grace-bot"
+          git config user.email "grace-bot@users.noreply.github.com"
+          git add data/scripts_queue.json data/schedule.json data/history.json
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+          else
+            git commit -m "GRACE scripts-queue tick ${{ github.run_id }}"
+            for i in 1 2 3; do
+              git pull --rebase origin main && git push origin main && break
+              sleep $((i * 3))
+            done
+          fi
+
+      - name: Fail the run if a dispatched build/upload failed
+        if: steps.dispatch.outputs.due == 'true' && (steps.build.outcome == 'failure' || steps.upload.outcome == 'failure')
+        run: exit 1

@@ -15,6 +15,13 @@ function authedFetch(url, opts = {}) {
 
 const STATUS_COLOR = { uploaded: GREEN, running: "#ffd84a", queued: "#ffd84a", failed: "#ff5c5c" };
 const STATUS_LABEL = { uploaded: "uploaded", running: "running", queued: "queued", failed: "failed" };
+
+// Separate map for the Scripts *queue* entries -- its "queued" means "not
+// yet dispatched", a different thing from a history run's "queued" (GH
+// Actions run pending) above. Two different "queued" concepts, same word,
+// so they get their own map rather than sharing STATUS_COLOR/STATUS_LABEL.
+const SCRIPT_STATUS_COLOR = { queued: DIM, building: "#ffd84a", created: GREEN, failed: "#ff5c5c" };
+const SCRIPT_STATUS_LABEL = { queued: "queued", building: "building...", created: "created ✓", failed: "failed" };
 const SESSION_MS = 60 * 60 * 1000; // auto-logout after 1 hour
 
 export default function Page() {
@@ -42,6 +49,15 @@ export default function Page() {
   const [createGate, setCreateGate] = useState(null); // {scenes, missing} when create is paused waiting on a decision
   const [pendingBuild, setPendingBuild] = useState(false); // true after "go upload pictures" -- shows a "continue build" button on necessities
   const [scriptFocused, setScriptFocused] = useState(false); // is the script textarea currently focused -- drives Grace's "looking at your script" expression
+  const [scriptsQueue, setScriptsQueue] = useState(null); // queued-script records, or null before first load
+  const [scriptsLoading, setScriptsLoading] = useState(false);
+  const [scriptsBulkText, setScriptsBulkText] = useState("");
+  const [scriptsBulkTitle, setScriptsBulkTitle] = useState("");
+  const [scriptsAddBusy, setScriptsAddBusy] = useState(false);
+  const [scriptsAddError, setScriptsAddError] = useState(null);
+  const [scriptsRowBusy, setScriptsRowBusy] = useState(null); // id of a queue entry currently being created/removed
+  const [schedule, setSchedule] = useState(null); // {enabled, interval_hours, last_dispatch_at, remaining_queued}
+  const [scheduleSaving, setScheduleSaving] = useState(false);
 
   // a stale gate/pending-build from a previous script shouldn't silently apply to a new one
   useEffect(() => {
@@ -167,6 +183,99 @@ export default function Page() {
   useEffect(() => {
     if (unlocked && tab === "history") loadHistory();
   }, [unlocked, tab]);
+
+  function loadScripts() {
+    setScriptsLoading(true);
+    authedFetch("/api/scripts")
+      .then((r) => r.json())
+      .then((d) => setScriptsQueue(d.scripts || []))
+      .catch(() => setScriptsQueue([]))
+      .finally(() => setScriptsLoading(false));
+  }
+
+  function loadSchedule() {
+    authedFetch("/api/schedule")
+      .then((r) => r.json())
+      .then((d) => setSchedule(d))
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    if (unlocked && tab === "scripts") {
+      loadScripts();
+      loadSchedule();
+    }
+  }, [unlocked, tab]);
+
+  function addScriptsToQueue() {
+    if (!scriptsBulkText.trim()) return;
+    setScriptsAddBusy(true);
+    setScriptsAddError(null);
+    authedFetch("/api/scripts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script_text: scriptsBulkText, title: scriptsBulkTitle || undefined }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) {
+          setScriptsAddError(d.error);
+          return;
+        }
+        setScriptsBulkText("");
+        setScriptsBulkTitle("");
+        loadScripts();
+        loadSchedule();
+      })
+      .catch((e) => setScriptsAddError(e.message))
+      .finally(() => setScriptsAddBusy(false));
+  }
+
+  function createFromQueue(id) {
+    setScriptsRowBusy(id);
+    authedFetch(`/api/scripts/${id}/create`, { method: "POST" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) {
+          setScriptsAddError(d.error);
+          return;
+        }
+        loadScripts();
+        loadSchedule();
+      })
+      .catch((e) => setScriptsAddError(e.message))
+      .finally(() => setScriptsRowBusy(null));
+  }
+
+  function deleteFromQueue(id) {
+    setScriptsRowBusy(id);
+    authedFetch(`/api/scripts/${id}`, { method: "DELETE" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) {
+          setScriptsAddError(d.error);
+          return;
+        }
+        loadScripts();
+        loadSchedule();
+      })
+      .catch((e) => setScriptsAddError(e.message))
+      .finally(() => setScriptsRowBusy(null));
+  }
+
+  function saveSchedule(patch) {
+    setScheduleSaving(true);
+    authedFetch("/api/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.error) setSchedule(d);
+      })
+      .finally(() => setScheduleSaving(false));
+  }
 
   function scanNecessities() {
     if (!script.trim()) {
@@ -418,6 +527,7 @@ export default function Page() {
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
         <TabButton active={tab === "create"} onClick={() => setTab("create")}>create</TabButton>
+        <TabButton active={tab === "scripts"} onClick={() => setTab("scripts")}>scripts</TabButton>
         <TabButton active={tab === "necessities"} onClick={() => setTab("necessities")}>necessities</TabButton>
         <TabButton active={tab === "history"} onClick={() => setTab("history")}>history</TabButton>
       </div>
@@ -497,6 +607,155 @@ export default function Page() {
             </p>
           )}
         </>
+      )}
+
+      {tab === "scripts" && (
+        <div>
+          <p style={{ color: DIM, fontSize: 13, marginTop: 0 }}>
+            Pre-write scripts here and let GRACE build them on its own schedule — or build any one of them right now.
+            Paste several at once by separating them with a line that's just <code style={{ color: "#eafff2" }}>---</code>.
+          </p>
+
+          <input
+            placeholder="title (optional — only used for a single script)"
+            value={scriptsBulkTitle}
+            onChange={(e) => setScriptsBulkTitle(e.target.value)}
+            style={{ ...inputStyle, width: "100%", boxSizing: "border-box" }}
+          />
+          <textarea
+            placeholder={"Paste one script, or several separated by a line with just ---"}
+            value={scriptsBulkText}
+            onChange={(e) => setScriptsBulkText(e.target.value)}
+            rows={8}
+            style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginTop: 10, resize: "vertical" }}
+          />
+          {scriptsAddError && <p style={{ color: "#ff8c8c", fontSize: 13 }}>{scriptsAddError}</p>}
+          <button
+            onClick={addScriptsToQueue}
+            disabled={scriptsAddBusy || !scriptsBulkText.trim()}
+            style={{ ...buttonStyle, width: "100%", marginTop: 6, opacity: scriptsAddBusy || !scriptsBulkText.trim() ? 0.5 : 1 }}
+          >
+            {scriptsAddBusy ? "saving..." : "add to queue"}
+          </button>
+
+          <div style={{ border: `1px solid ${DIM}`, borderRadius: 6, padding: "10px 12px", margin: "18px 0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "#eafff2", fontWeight: 600, fontSize: 14 }}>schedule</span>
+              {schedule && (
+                <span style={{ color: DIM, fontSize: 13 }}>
+                  {schedule.remaining_queued} queued
+                </span>
+              )}
+            </div>
+            {schedule === null ? (
+              <p style={{ color: DIM, fontSize: 13, margin: "6px 0 0" }}>loading...</p>
+            ) : (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10 }}>
+                  <button
+                    onClick={() => saveSchedule({ enabled: !schedule.enabled })}
+                    disabled={scheduleSaving}
+                    style={{
+                      ...buttonStyle,
+                      padding: "6px 12px",
+                      fontSize: 13,
+                      borderColor: schedule.enabled ? GREEN : DIM,
+                      color: schedule.enabled ? GREEN : DIM,
+                      opacity: scheduleSaving ? 0.5 : 1,
+                    }}
+                  >
+                    {schedule.enabled ? "on — auto-dispatching" : "off"}
+                  </button>
+                  <span style={{ color: DIM, fontSize: 13 }}>every</span>
+                  <select
+                    value={schedule.interval_hours}
+                    onChange={(e) => saveSchedule({ interval_hours: Number(e.target.value) })}
+                    disabled={scheduleSaving}
+                    style={{ ...inputStyle, width: "auto", margin: 0, padding: "6px 10px", fontSize: 13 }}
+                  >
+                    <option value={1}>hour</option>
+                    <option value={3}>3 hours</option>
+                    <option value={6}>6 hours</option>
+                    <option value={12}>12 hours</option>
+                    <option value={24}>day</option>
+                    <option value={48}>2 days</option>
+                    <option value={168}>week</option>
+                  </select>
+                </div>
+                {schedule.enabled && schedule.remaining_queued === 0 && (
+                  <p style={{ color: "#ffd84a", fontSize: 13, margin: "10px 0 0" }}>
+                    Queue's empty — add scripts above so there's something to dispatch.
+                  </p>
+                )}
+                <p style={{ color: DIM, fontSize: 12, margin: "8px 0 0" }}>
+                  Checked hourly on GitHub's clock; dispatches the oldest queued script once this interval has passed.
+                  Scheduled videos upload as private.
+                </p>
+              </>
+            )}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ color: DIM, fontSize: 13 }}>queue</span>
+            <button onClick={loadScripts} style={{ ...buttonStyle, padding: "4px 10px", fontSize: 13 }}>
+              {scriptsLoading ? "..." : "refresh"}
+            </button>
+          </div>
+
+          {scriptsLoading && scriptsQueue === null && <p style={{ color: DIM }}>loading...</p>}
+          {!scriptsLoading && scriptsQueue !== null && scriptsQueue.length === 0 && (
+            <p style={{ color: DIM }}>Nothing queued yet — paste a script above.</p>
+          )}
+
+          {scriptsQueue && scriptsQueue.map((item) => (
+            <div key={item.id} style={{ border: `1px solid ${DIM}`, borderRadius: 6, padding: "10px 12px", marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ color: "#eafff2", fontWeight: 600 }}>
+                  {item.title || item.script_text.slice(0, 48) + (item.script_text.length > 48 ? "…" : "")}
+                </span>
+                <span style={{ color: SCRIPT_STATUS_COLOR[item.status] || DIM, fontSize: 13, whiteSpace: "nowrap" }}>
+                  {SCRIPT_STATUS_LABEL[item.status] || item.status}
+                </span>
+              </div>
+              {item.status === "failed" && (
+                <div style={{ color: "#ff8c8c", fontSize: 13, marginTop: 4 }}>
+                  {item.failed_step ? `failed at: ${item.failed_step}` : "failed"}
+                  {item.error ? ` — ${item.error.slice(0, 140)}` : ""}
+                </div>
+              )}
+              <div style={{ marginTop: 6, fontSize: 13, display: "flex", gap: 14, alignItems: "center" }}>
+                {item.status === "queued" && (
+                  <>
+                    <button
+                      onClick={() => createFromQueue(item.id)}
+                      disabled={scriptsRowBusy === item.id}
+                      style={{ ...buttonStyle, padding: "4px 10px", fontSize: 13, opacity: scriptsRowBusy === item.id ? 0.5 : 1 }}
+                    >
+                      {scriptsRowBusy === item.id ? "..." : "create now"}
+                    </button>
+                    <button
+                      onClick={() => deleteFromQueue(item.id)}
+                      disabled={scriptsRowBusy === item.id}
+                      style={{ background: "none", border: "none", color: "#ff8c8c", fontFamily: "inherit", fontSize: 13, cursor: "pointer", padding: 0, opacity: scriptsRowBusy === item.id ? 0.5 : 1 }}
+                    >
+                      remove
+                    </button>
+                  </>
+                )}
+                {item.run_url && (
+                  <a href={item.run_url} target="_blank" rel="noreferrer" style={{ color: DIM }}>
+                    build log →
+                  </a>
+                )}
+                {item.video_url && (
+                  <a href={item.video_url} target="_blank" rel="noreferrer" style={{ color: GREEN }}>
+                    watch on YouTube →
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {tab === "necessities" && (
