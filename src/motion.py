@@ -409,6 +409,27 @@ def _backdrop_motion(scene_id):
     return zoom_in, pan_dx, pan_dy
 
 
+_BACKDROP_OVERLAY_CACHE = None
+
+
+def _backdrop_overlay_rgba():
+    """Dark gradient over the lower half of the frame, precomputed once and
+    cached -- it's pixel-identical on every frame of every scene, so
+    rebuilding it with a 1920-row Python putpixel() loop on every single
+    frame (as the first version of this did) was pure waste."""
+    global _BACKDROP_OVERLAY_CACHE
+    if _BACKDROP_OVERLAY_CACHE is not None:
+        return _BACKDROP_OVERLAY_CACHE
+    col = Image.new("RGB", (1, H), (3, 5, 4))
+    alpha = Image.new("L", (1, H))
+    for y in range(H):
+        depth = max(0.0, (y - H * 0.42) / (H * 0.58))
+        alpha.putpixel((0, y), int(185 * depth ** 1.3))
+    col.putalpha(alpha)
+    _BACKDROP_OVERLAY_CACHE = col.resize((W, H), Image.NEAREST)
+    return _BACKDROP_OVERLAY_CACHE
+
+
 def _draw_scene_backdrop(img, scene_image, t, duration, scene_id):
     """Fills the whole frame with the scene's matched picture -- a slow Ken
     Burns zoom + pan instead of a static inset card, so a scene with a real
@@ -416,31 +437,34 @@ def _draw_scene_backdrop(img, scene_image, t, duration, scene_id):
     stapled onto the terminal background. A dark gradient over the lower
     half keeps the caption and stickman readable regardless of what's in
     the picture. Mutates `img` in place; caller re-wraps it in ImageDraw
-    afterward for the caption/stickman/header passes."""
+    afterward for the caption/stickman/header passes.
+
+    Resizes straight from the source crop region to the final WxH in one
+    call (PIL's `box` argument) instead of resizing the whole image up to
+    an oversized intermediate and then cropping -- the first version of
+    this did a full LANCZOS resize of a (potentially) 1600px image on
+    *every frame of the whole scene*, which was slow enough to blow past
+    the build's time budget. BILINEAR instead of LANCZOS too: at this
+    resize ratio, for a continuously panning/zooming backdrop, the
+    difference isn't visible, and it's meaningfully cheaper per frame."""
     iw, ih = scene_image.size
     zoom_in, pan_dx, pan_dy = _backdrop_motion(scene_id)
     progress = min(1.0, t / max(duration, 0.1))
 
     z0, z1 = (1.0, 1.14) if zoom_in else (1.14, 1.0)
     zoom = _lerp(z0, z1, progress)
-
     cover = max(W / iw, H / ih) * zoom
-    disp_w, disp_h = max(W, int(iw * cover)), max(H, int(ih * cover))
-    frame_img = scene_image.resize((disp_w, disp_h), Image.LANCZOS)
 
-    max_off_x, max_off_y = max(0, disp_w - W), max(0, disp_h - H)
-    ox = max(0, min(max_off_x, int((max_off_x / 2) * (1 + pan_dx * progress))))
-    oy = max(0, min(max_off_y, int((max_off_y / 2) * (1 + pan_dy * progress))))
+    src_w, src_h = W / cover, H / cover
+    max_off_x, max_off_y = max(0.0, iw - src_w), max(0.0, ih - src_h)
+    sx = max(0.0, min(max_off_x, (max_off_x / 2) * (1 + pan_dx * progress)))
+    sy = max(0.0, min(max_off_y, (max_off_y / 2) * (1 + pan_dy * progress)))
 
-    img.paste(frame_img.crop((ox, oy, ox + W, oy + H)), (0, 0))
+    frame_img = scene_image.resize((W, H), Image.BILINEAR, box=(sx, sy, sx + src_w, sy + src_h))
+    img.paste(frame_img, (0, 0))
 
-    overlay = Image.new("L", (1, H))
-    for y in range(H):
-        depth = max(0.0, (y - H * 0.42) / (H * 0.58))
-        overlay.putpixel((0, y), int(185 * depth ** 1.3))
-    overlay = overlay.resize((W, H))
-    dark = Image.new("RGB", (W, H), (3, 5, 4))
-    img.paste(Image.composite(dark, img, overlay), (0, 0))
+    overlay = _backdrop_overlay_rgba()
+    img.paste(overlay, (0, 0), overlay)
 
 
 def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
