@@ -131,6 +131,16 @@
       ],
       "title": "Space travle",
       "created_at": "2026-11-08T09:36:09.594Z"
+    },
+    {
+      "id": "img_0014",
+      "filename": "img_0014_cta.jpg",
+      "path": "images/library/img_0014_cta.jpg",
+      "tags": [
+        "cta"
+      ],
+      "title": "Space travle",
+      "created_at": "2026-11-08T09:36:22.752Z"
     }
   ]
 }
