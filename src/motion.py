@@ -337,12 +337,23 @@ def _motif_terminal(draw, visual, t, pal):
         draw.arc([cx - r, cy - r, cx + r, cy + r], 320, 360, fill=pal["accent"], width=6)
 
 
-def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal):
+def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, backdrop=False):
     """Stick figure acting out the scene's pose, plus a small badge icon for
     whatever the sentence is actually about, when one was detected. A soft
     glow pulses behind the figure's head while it's actually speaking, so
-    the sync to the voice reads at a glance, not just via the mouth flap."""
-    cx, cy = W / 2, H * 0.58
+    the sync to the voice reads at a glance, not just via the mouth flap.
+
+    When `backdrop` is True (a real picture fills the frame instead of the
+    procedural motif), the figure moves to a lower corner -- out of the
+    picture's main subject -- and always uses the "point" pose, so it
+    visibly reads as "look at this" rather than overlapping the photo's
+    center. The badge icon is skipped there too; the photo already shows
+    what the scene is about."""
+    if backdrop:
+        cx, cy = W * 0.24, H * 0.76
+        pose = "point"
+    else:
+        cx, cy = W / 2, H * 0.58
     talking = stickman.is_speaking(boundaries, t) if boundaries else False
 
     if talking:
@@ -355,7 +366,7 @@ def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal):
 
     stickman.draw_stickman(draw, cx, cy, 62, pose, t, talking, pal["ink"], pal["dim"])
 
-    if icon_name:
+    if icon_name and not backdrop:
         bx, by, br = W * 0.80, H * 0.20, 78
         pulse = 1.0 + 0.04 * math.sin(t * 2.2)
         draw.ellipse(
@@ -365,58 +376,71 @@ def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal):
         icon_lib.draw_icon(draw, icon_name, bx, by, br * 0.55, pal["ink"], font=_font(44, FONT_MONO_BOLD))
 
 
-_SCENE_IMAGE_REVEAL_S = 0.45  # how long the pop-in/fade-in takes
+_BACKDROP_MAX_DIM = 1600  # load bigger than the old inset card -- this now fills the whole 1080x1920 frame
 
 
-def _ease_out_back(x):
-    """Overshoots slightly past 1.0 then settles -- a little "pop" as the
-    picture draws itself in, per the brief, rather than a flat linear scale."""
-    c1 = 1.70158
-    c3 = c1 + 1
-    return 1 + c3 * (x - 1) ** 3 + c1 * (x - 1) ** 2
-
-
-def _load_scene_image(path, max_w=640, max_h=640):
-    """Loads + downscales a library image once per scene (not per frame)."""
+def _load_scene_image(path):
+    """Loads a library image sized for a full-bleed backdrop and flattens
+    it onto a neutral fill (so a transparent PNG doesn't leave a hole once
+    it's covering the whole frame, not just sitting in a small card)."""
     try:
         img = Image.open(path).convert("RGBA")
     except Exception as e:
         print(f"[motion] couldn't load library image {path}: {e}")
         return None
     w, h = img.size
-    scale = min(max_w / w, max_h / h, 1.0)
-    new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
-    return img.resize(new_size, Image.LANCZOS) if new_size != (w, h) else img
+    scale = min(_BACKDROP_MAX_DIM / max(w, h), 4.0)  # cap upscaling of a tiny source image
+    if scale > 1.0:
+        img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.LANCZOS)
+    flat = Image.new("RGB", img.size, (14, 18, 16))
+    flat.paste(img, (0, 0), img)
+    return flat
 
 
-def _draw_scene_image(base_img, draw, scene_image, t, pal):
-    """Pastes the scene's matched library image into a framed card, with a
-    brief ease-out-back scale+fade pop-in as the scene starts -- "objects
-    draw themselves in" per the brief -- instead of the abstract procedural
-    motif. Replaces _motif_terminal for this scene when a match exists."""
-    cx, cy = W / 2, H * 0.34
+def _backdrop_motion(scene_id):
+    """Deterministic per-scene zoom direction + pan drift (from the scene
+    id, not random.random()) so repeated renders of the same scene are
+    identical, but consecutive scenes with pictures don't all drift the
+    same way."""
+    seed = sum(ord(c) for c in str(scene_id or "x"))
+    zoom_in = seed % 2 == 0
+    pan_dx = ((seed * 7) % 7 - 3) / 3.0  # -1..1
+    pan_dy = ((seed * 13) % 7 - 3) / 3.0
+    return zoom_in, pan_dx, pan_dy
+
+
+def _draw_scene_backdrop(img, scene_image, t, duration, scene_id):
+    """Fills the whole frame with the scene's matched picture -- a slow Ken
+    Burns zoom + pan instead of a static inset card, so a scene with a real
+    picture is the backdrop the stickman stands in front of, not a photo
+    stapled onto the terminal background. A dark gradient over the lower
+    half keeps the caption and stickman readable regardless of what's in
+    the picture. Mutates `img` in place; caller re-wraps it in ImageDraw
+    afterward for the caption/stickman/header passes."""
     iw, ih = scene_image.size
+    zoom_in, pan_dx, pan_dy = _backdrop_motion(scene_id)
+    progress = min(1.0, t / max(duration, 0.1))
 
-    progress = min(1.0, t / _SCENE_IMAGE_REVEAL_S)
-    scale = max(0.05, _ease_out_back(progress))
-    disp_w, disp_h = max(2, int(iw * scale)), max(2, int(ih * scale))
+    z0, z1 = (1.0, 1.14) if zoom_in else (1.14, 1.0)
+    zoom = _lerp(z0, z1, progress)
 
-    frame_img = scene_image.resize((disp_w, disp_h), Image.LANCZOS) if scale != 1.0 else scene_image
+    cover = max(W / iw, H / ih) * zoom
+    disp_w, disp_h = max(W, int(iw * cover)), max(H, int(ih * cover))
+    frame_img = scene_image.resize((disp_w, disp_h), Image.LANCZOS)
 
-    alpha_mult = min(1.0, progress / 0.6)
-    if alpha_mult < 1.0:
-        alpha = frame_img.split()[-1].point(lambda a: int(a * alpha_mult))
-        frame_img = frame_img.copy()
-        frame_img.putalpha(alpha)
+    max_off_x, max_off_y = max(0, disp_w - W), max(0, disp_h - H)
+    ox = max(0, min(max_off_x, int((max_off_x / 2) * (1 + pan_dx * progress))))
+    oy = max(0, min(max_off_y, int((max_off_y / 2) * (1 + pan_dy * progress))))
 
-    px, py = int(cx - disp_w / 2), int(cy - disp_h / 2)
+    img.paste(frame_img.crop((ox, oy, ox + W, oy + H)), (0, 0))
 
-    pad = 18
-    draw.rounded_rectangle(
-        [px - pad, py - pad, px + disp_w + pad, py + disp_h + pad],
-        radius=14, outline=pal["grid"], width=3, fill=pal["bg"],
-    )
-    base_img.paste(frame_img, (px, py), frame_img)
+    overlay = Image.new("L", (1, H))
+    for y in range(H):
+        depth = max(0.0, (y - H * 0.42) / (H * 0.58))
+        overlay.putpixel((0, y), int(185 * depth ** 1.3))
+    overlay = overlay.resize((W, H))
+    dark = Image.new("RGB", (W, H), (3, 5, 4))
+    img.paste(Image.composite(dark, img, overlay), (0, 0))
 
 
 def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
@@ -450,14 +474,16 @@ def render_scene(scene, boundaries, out_path, fps=FPS, theme=None):
                 break
 
         if pal is not None:
-            img = _terminal_bg(t, pal)
-            draw = ImageDraw.Draw(img)
             if scene_image is not None:
-                _draw_scene_image(img, draw, scene_image, t, pal)
+                img = Image.new("RGB", (W, H), pal["bg"])
+                _draw_scene_backdrop(img, scene_image, t, duration, scene.get("id"))
+                draw = ImageDraw.Draw(img)
             else:
+                img = _terminal_bg(t, pal)
+                draw = ImageDraw.Draw(img)
                 _motif_terminal(draw, scene["visual"], t, pal)
             if CHARACTERS:
-                _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal)
+                _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, backdrop=(scene_image is not None))
             _terminal_header(draw, t, pal, scene.get("terminal_label", "breach_report.sh"))
             if boundaries:
                 _draw_caption_terminal(draw, active_idx, boundaries, t, pal)
