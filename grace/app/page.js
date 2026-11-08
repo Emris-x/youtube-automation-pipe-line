@@ -41,6 +41,7 @@ export default function Page() {
   const [copiedSceneId, setCopiedSceneId] = useState(null);
   const [createGate, setCreateGate] = useState(null); // {scenes, missing} when create is paused waiting on a decision
   const [pendingBuild, setPendingBuild] = useState(false); // true after "go upload pictures" -- shows a "continue build" button on necessities
+  const [scriptFocused, setScriptFocused] = useState(false); // is the script textarea currently focused -- drives Grace's "looking at your script" expression
 
   // a stale gate/pending-build from a previous script shouldn't silently apply to a new one
   useEffect(() => {
@@ -347,6 +348,19 @@ export default function Page() {
     createVideo();
   }
 
+  // Grace's expression for the workspace header: working/dispatching a
+  // build takes priority, then whatever the create tab is doing (looking
+  // down while the script is actively being typed, looking up once it's
+  // not empty but you've stopped), otherwise just idly present.
+  const graceMood =
+    busy || necessitiesLoading
+      ? "waiting"
+      : tab === "create" && scriptFocused
+        ? "watching"
+        : tab === "create" && script.trim()
+          ? "attentive"
+          : "idle";
+
   if (!unlocked) {
     return (
       <Center>
@@ -383,8 +397,16 @@ export default function Page() {
 
   return (
     <Center wide>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <h1 style={{ color: GREEN, marginBottom: 4 }}>&gt; GRACE_</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <GraceFace mood={graceMood} size={52} />
+          <div>
+            <h1 style={{ color: GREEN, margin: 0, lineHeight: 1 }}>&gt; GRACE_</h1>
+            {graceMood === "waiting" && (
+              <div style={{ color: DIM, fontSize: 12, marginTop: 3 }}>hold on, working on it...</div>
+            )}
+          </div>
+        </div>
         <button
           onClick={() => setView("home")}
           style={{ background: "none", border: "none", color: DIM, fontFamily: "inherit", fontSize: 13, cursor: "pointer", padding: 0 }}
@@ -421,6 +443,8 @@ export default function Page() {
             placeholder={"Paste or type your script.\nLeave a blank line between scenes.\nFirst scene = hook, last = call-to-action."}
             value={script}
             onChange={(e) => setScript(e.target.value)}
+            onFocus={() => setScriptFocused(true)}
+            onBlur={() => setScriptFocused(false)}
             rows={14}
             style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginTop: 10, resize: "vertical" }}
           />
@@ -773,6 +797,75 @@ function GraceTimeOverlay({ item, onClose }) {
   );
 }
 
+/** Grace's face -- the app's mascot/personality, present on every screen.
+ * Sly, narrow cat-eyes + an asymmetric raised eyebrow + a smirk, drawn as
+ * plain SVG so it's free and matches the line-art terminal look exactly.
+ * `mood` drives where she's looking and what her mouth is doing:
+ *   idle      - centered pupils, slow idle drift, for "just here, present"
+ *   watching  - pupils down, for "reading your script as you type it"
+ *   attentive - pupils centered/up, for "done typing, looking at you"
+ *   waiting   - pupils scanning side to side + flat mouth, for "working on it" */
+function GraceFace({ mood = "idle", size = 120, bubble }) {
+  const pupilYByMood = { idle: 0, watching: 6, attentive: -1, waiting: 0 };
+  const pupilY = pupilYByMood[mood] ?? 0;
+  const pupilClass = mood === "idle" ? "grace-pupils-idle" : mood === "waiting" ? "grace-pupils-waiting" : "";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+      <style>{`
+        @keyframes grace-face-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.12); } }
+        @keyframes grace-face-drift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(2.5px); } }
+        @keyframes grace-face-scan { 0% { transform: translateX(-5px); } 50% { transform: translateX(5px); } 100% { transform: translateX(-5px); } }
+        .grace-eye-group { transform-origin: center; animation: grace-face-blink 4.6s ease-in-out infinite; }
+        .grace-pupils-idle { animation: grace-face-drift 3.2s ease-in-out infinite; }
+        .grace-pupils-waiting { animation: grace-face-scan 1s ease-in-out infinite; }
+      `}</style>
+      <svg width={size} height={size * 0.62} viewBox="0 0 120 74" style={{ overflow: "visible", flexShrink: 0 }}>
+        <rect
+          x="2" y="2" width="116" height="70" rx="14"
+          fill={BG} stroke={GREEN} strokeWidth="2.5"
+          style={{ filter: `drop-shadow(0 0 ${Math.max(4, size * 0.045)}px rgba(60,255,140,0.55))` }}
+        />
+        {/* asymmetric brows -- one raised higher for a sly, clever look */}
+        <line x1="20" y1="27" x2="50" y2="16" stroke={GREEN} strokeWidth="3.5" strokeLinecap="round" />
+        <line x1="70" y1="23" x2="99" y2="21" stroke={GREEN} strokeWidth="3.5" strokeLinecap="round" />
+        {/* left eye */}
+        <g className="grace-eye-group">
+          <path d="M22 36 Q36 24 50 36 Q36 44 22 36 Z" fill="none" stroke={GREEN} strokeWidth="3" strokeLinejoin="round" />
+          <circle className={pupilClass} cx="36" cy={36 + pupilY} r="5" fill={GREEN} />
+        </g>
+        {/* right eye */}
+        <g className="grace-eye-group">
+          <path d="M70 36 Q84 26 99 34 Q85 44 70 36 Z" fill="none" stroke={GREEN} strokeWidth="3" strokeLinejoin="round" />
+          <circle className={pupilClass} cx="85" cy={35 + pupilY} r="5" fill={GREEN} />
+        </g>
+        {/* mouth -- smirk, or a flat line while waiting on something */}
+        {mood === "waiting" ? (
+          <line x1="52" y1="58" x2="72" y2="58" stroke={GREEN} strokeWidth="3" strokeLinecap="round" />
+        ) : (
+          <path d="M50 56 Q62 66 76 54" fill="none" stroke={GREEN} strokeWidth="3" strokeLinecap="round" />
+        )}
+      </svg>
+      {bubble && (
+        <div
+          style={{
+            border: `1.5px solid ${GREEN}`,
+            borderRadius: 10,
+            padding: "8px 14px",
+            color: "#eafff2",
+            fontSize: 13,
+            maxWidth: 280,
+            textAlign: "center",
+            background: "rgba(60,255,140,0.05)",
+          }}
+        >
+          {bubble}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The landing screen. Same hacker-terminal palette as the rest of the app,
  * just laid out with more care: a glowing wordmark, a short numbered
  * explainer instead of one dense paragraph, a real draft-preview card, and
@@ -807,17 +900,22 @@ function HomeView({ hasDraft, title, preview, onResume, onNew, onHistory }) {
               color: DIM,
               letterSpacing: 3,
               textTransform: "uppercase",
-              marginBottom: 6,
+              marginBottom: 14,
             }}
           >
             how it actually broke
           </div>
+
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <GraceFace mood="idle" size={150} bubble="Hey, I'm Grace. What do you want to do today?" />
+          </div>
+
           <h1
             style={{
               color: GREEN,
               fontSize: 40,
               letterSpacing: 1,
-              margin: 0,
+              margin: "18px 0 0",
               textShadow: "0 0 18px rgba(60,255,140,0.45)",
             }}
           >
