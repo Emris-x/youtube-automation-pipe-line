@@ -43,7 +43,7 @@ jobs:
           # pipeline. Not worth the risk for the time saved — plain
           # apt-get is slower but always correct.
           sudo apt-get update
-          sudo apt-get install -y ffmpeg fonts-firacode fonts-dejavu-core
+          sudo apt-get install -y ffmpeg fonts-firacode fonts-dejavu-core espeak-ng
           ffmpeg -version >/dev/null
           ffprobe -version >/dev/null
 
