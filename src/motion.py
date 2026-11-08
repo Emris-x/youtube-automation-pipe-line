@@ -364,7 +364,15 @@ def _draw_character_and_icon(draw, scene, boundaries, t, pose, icon_name, pal, b
         cx, cy = W / 2, H * 0.58
     talking = stickman.is_speaking(boundaries, t) if boundaries else False
 
-    if talking:
+    # The talking glow blends toward pal["bg"] (near-black for the terminal
+    # theme) -- that only reads right against the matching procedural
+    # background it was drawn for. draw.ellipse(fill=...) is a flat
+    # overwrite, not an alpha blend, so painting it over a photo backdrop
+    # stamps a solid near-black disc on top of the picture instead of a
+    # glow -- exactly the "pasted on, doesn't integrate" look. Skip it in
+    # backdrop mode; the mouth-flap animation already carries the
+    # speaking cue there.
+    if talking and not backdrop:
         glow_cx, glow_cy = cx, cy - 62 * 3.4
         glow_r = 62 * 1.5 + 10 * math.sin(t * 10.0)
         for i in range(3, 0, -1):
@@ -392,17 +400,35 @@ def _ground_shadow_rgba():
     the stickman whenever it's standing on a photo backdrop -- without it,
     the flat green linework has nothing to visually sit on and reads as a
     transparent outline stapled on top of the photo rather than a
-    character actually standing in the scene."""
+    character actually standing in the scene.
+
+    Built as a real per-pixel radial falloff (computed small, then
+    upscaled with BILINEAR for a soft edge) rather than several solid
+    ImageDraw ellipses stacked on top of each other -- ImageDraw.ellipse
+    overwrites pixels instead of blending them, so a lower-alpha small
+    ellipse drawn over a higher-alpha big one made the CENTER more
+    transparent than the rim: a flat gray "donut"/tire shape instead of a
+    shadow, which is exactly as bad as the outline problem this exists to
+    fix."""
     global _GROUND_SHADOW_CACHE
     if _GROUND_SHADOW_CACHE is not None:
         return _GROUND_SHADOW_CACHE
     rw, rh = 460, 520
-    shadow = Image.new("RGBA", (rw, rh), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(shadow)
-    cx, cy = rw / 2, rh * 0.56
-    for rx, ry, a in [(230, 260, 90), (175, 200, 65), (115, 135, 45)]:
-        sd.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=(3, 5, 4, a))
-    _GROUND_SHADOW_CACHE = shadow
+    sw, sh = 92, 104  # small working res, computed once -- upscaled below
+    small = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+    cx, cy = sw / 2, sh * 0.56
+    rx, ry = sw * 0.46, sh * 0.42
+    max_alpha = 130
+    for y in range(sh):
+        for x in range(sw):
+            dx, dy = (x - cx) / rx, (y - cy) / ry
+            d = (dx * dx + dy * dy) ** 0.5
+            if d >= 1.0:
+                continue
+            a = int(max_alpha * (1.0 - d) ** 1.6)
+            if a > 0:
+                small.putpixel((x, y), (3, 5, 4, a))
+    _GROUND_SHADOW_CACHE = small.resize((rw, rh), Image.BILINEAR)
     return _GROUND_SHADOW_CACHE
 
 
