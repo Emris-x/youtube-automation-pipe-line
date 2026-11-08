@@ -56,14 +56,16 @@ def matched_keywords(text):
 # ---------------------------------------------------------------- drawing
 
 def _plane(draw, cx, cy, s, color):
-    draw.line([cx - s, cy, cx + s, cy], fill=color, width=max(2, s // 14))
-    draw.polygon([(cx + s, cy), (cx + s * 0.4, cy - s * 0.35), (cx + s * 0.4, cy + s * 0.35)], outline=color, width=max(2, s // 16))
-    draw.line([cx - s * 0.1, cy, cx - s * 0.5, cy - s * 0.4], fill=color, width=max(2, s // 16))
-    draw.line([cx - s * 0.1, cy, cx - s * 0.5, cy + s * 0.4], fill=color, width=max(2, s // 16))
+    w1 = max(2, int(s // 14))
+    w2 = max(2, int(s // 16))
+    draw.line([cx - s, cy, cx + s, cy], fill=color, width=w1)
+    draw.polygon([(cx + s, cy), (cx + s * 0.4, cy - s * 0.35), (cx + s * 0.4, cy + s * 0.35)], outline=color, width=w2)
+    draw.line([cx - s * 0.1, cy, cx - s * 0.5, cy - s * 0.4], fill=color, width=w2)
+    draw.line([cx - s * 0.1, cy, cx - s * 0.5, cy + s * 0.4], fill=color, width=w2)
 
 
 def _bank(draw, cx, cy, s, color):
-    w = max(2, s // 16)
+    w = max(2, int(s // 16))
     draw.line([cx - s, cy + s * 0.6, cx + s, cy + s * 0.6], fill=color, width=w)
     draw.polygon([(cx, cy - s), (cx - s, cy - s * 0.3), (cx + s, cy - s * 0.3)], outline=color, width=w)
     for i in range(4):
@@ -72,14 +74,14 @@ def _bank(draw, cx, cy, s, color):
 
 
 def _hospital(draw, cx, cy, s, color):
-    w = max(2, s // 14)
+    w = max(2, int(s // 14))
     draw.rounded_rectangle([cx - s, cy - s, cx + s, cy + s], radius=s * 0.2, outline=color, width=w)
     draw.rectangle([cx - s * 0.18, cy - s * 0.55, cx + s * 0.18, cy + s * 0.55], fill=color)
     draw.rectangle([cx - s * 0.55, cy - s * 0.18, cx + s * 0.55, cy + s * 0.18], fill=color)
 
 
 def _server(draw, cx, cy, s, color):
-    w = max(2, s // 16)
+    w = max(2, int(s // 16))
     for i in range(3):
         y0 = cy - s + i * (s * 0.75)
         y1 = y0 + s * 0.55
@@ -88,20 +90,20 @@ def _server(draw, cx, cy, s, color):
 
 
 def _phone(draw, cx, cy, s, color):
-    w = max(2, s // 16)
+    w = max(2, int(s // 16))
     draw.rounded_rectangle([cx - s * 0.55, cy - s, cx + s * 0.55, cy + s], radius=s * 0.25, outline=color, width=w)
     draw.line([cx - s * 0.25, cy + s * 0.75, cx + s * 0.25, cy + s * 0.75], fill=color, width=w)
 
 
 def _lock(draw, cx, cy, s, color):
-    w = max(2, s // 14)
+    w = max(2, int(s // 14))
     draw.rounded_rectangle([cx - s * 0.7, cy - s * 0.1, cx + s * 0.7, cy + s, ], radius=s * 0.15, outline=color, width=w)
     draw.arc([cx - s * 0.45, cy - s * 1.1, cx + s * 0.45, cy - s * 0.1], 180, 360, fill=color, width=w)
     draw.ellipse([cx - s * 0.12, cy + s * 0.3, cx + s * 0.12, cy + s * 0.54], fill=color)
 
 
 def _shield(draw, cx, cy, s, color):
-    w = max(2, s // 14)
+    w = max(2, int(s // 14))
     pts = [
         (cx, cy - s), (cx + s * 0.8, cy - s * 0.55), (cx + s * 0.8, cy + s * 0.15),
         (cx, cy + s), (cx - s * 0.8, cy + s * 0.15), (cx - s * 0.8, cy - s * 0.55),
@@ -112,7 +114,7 @@ def _shield(draw, cx, cy, s, color):
 
 
 def _globe(draw, cx, cy, s, color):
-    w = max(2, s // 16)
+    w = max(2, int(s // 16))
     draw.ellipse([cx - s, cy - s, cx + s, cy + s], outline=color, width=w)
     draw.ellipse([cx - s * 0.4, cy - s, cx + s * 0.4, cy + s], outline=color, width=w)
     draw.line([cx - s, cy, cx + s, cy], fill=color, width=w)
@@ -121,7 +123,7 @@ def _globe(draw, cx, cy, s, color):
 
 
 def _money(draw, cx, cy, s, color, font=None):
-    w = max(2, s // 16)
+    w = max(2, int(s // 16))
     draw.ellipse([cx - s, cy - s, cx + s, cy + s], outline=color, width=w)
     if font is not None:
         tw = draw.textlength("$", font=font)
@@ -129,7 +131,7 @@ def _money(draw, cx, cy, s, color, font=None):
 
 
 def _warning(draw, cx, cy, s, color, font=None):
-    w = max(2, s // 14)
+    w = max(2, int(s // 14))
     draw.polygon([(cx, cy - s), (cx + s, cy + s * 0.8), (cx - s, cy + s * 0.8)], outline=color, width=w)
     if font is not None:
         tw = draw.textlength("!", font=font)
@@ -137,7 +139,7 @@ def _warning(draw, cx, cy, s, color, font=None):
 
 
 def _person(draw, cx, cy, s, color):
-    w = max(2, s // 14)
+    w = max(2, int(s // 14))
     draw.ellipse([cx - s * 0.35, cy - s, cx + s * 0.35, cy - s * 0.3], outline=color, width=w)
     draw.line([cx, cy - s * 0.3, cx, cy + s * 0.5], fill=color, width=w)
     draw.line([cx, cy, cx - s * 0.6, cy + s * 0.2], fill=color, width=w)
@@ -147,7 +149,7 @@ def _person(draw, cx, cy, s, color):
 
 
 def _clock(draw, cx, cy, s, color):
-    w = max(2, s // 16)
+    w = max(2, int(s // 16))
     draw.ellipse([cx - s, cy - s, cx + s, cy + s], outline=color, width=w)
     draw.line([cx, cy, cx, cy - s * 0.65], fill=color, width=w)
     draw.line([cx, cy, cx + s * 0.45, cy + s * 0.2], fill=color, width=w)
