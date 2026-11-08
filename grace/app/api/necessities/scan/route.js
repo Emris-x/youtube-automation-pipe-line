@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { checkAppPassword } from "../../../../lib/auth";
 import { splitScenes } from "../../../../lib/scenes";
-import { extractKeywords, promptForScene } from "../../../../lib/keywords";
+import { extractKeywords, promptForScene, isRealMatch } from "../../../../lib/keywords";
 import { getManifest } from "../../../../lib/library";
 import { OWNER, REPO } from "../../../../lib/github";
 
@@ -23,7 +23,7 @@ export async function POST(req) {
   const result = scenes.map((scene) => {
     const tags = extractKeywords(scene.text);
     const matches = (manifest.images || [])
-      .filter((img) => Array.isArray(img.tags) && img.tags.some((t) => tags.includes(t)))
+      .filter((img) => Array.isArray(img.tags) && isRealMatch(tags, img.tags))
       .slice(0, 6)
       .map((img) => ({ id: img.id, path: img.path, filename: img.filename, url: rawUrl(img.path) }));
 

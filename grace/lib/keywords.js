@@ -17,7 +17,19 @@ export const KEYWORD_CATEGORIES = [
   { re: /\b(clock|minutes?|hours?|days?|delay(ed)?)\b/i, tag: "clock" },
 ];
 
-const CATEGORY_TAGS = new Set(KEYWORD_CATEGORIES.map((k) => k.tag));
+export const CATEGORY_TAGS = new Set(KEYWORD_CATEGORIES.map((k) => k.tag));
+
+/** Mirrors src/library.py's best_match: a single shared category tag
+ * (e.g. both just mention "security") is too weak to count as a real
+ * picture match -- it's how an unrelated old picture from a totally
+ * different script used to get reused. Needs a shared brand tag, or 2+
+ * shared category tags. */
+export function isRealMatch(sceneTags, imageTags) {
+  const overlap = imageTags.filter((t) => sceneTags.includes(t));
+  if (overlap.length === 0) return false;
+  const hasBrandOverlap = overlap.some((t) => !CATEGORY_TAGS.has(t));
+  return hasBrandOverlap || overlap.length >= 2;
+}
 
 // Common sentence-starters we don't want mistaken for brand/proper nouns
 // just because they're capitalized at the start of a scene.

@@ -24,16 +24,33 @@ export async function POST(req) {
 
   const extFromName = filename && filename.includes(".") ? filename.split(".").pop().toLowerCase() : "";
   const ext = ALLOWED_EXT.has(extFromName) ? extFromName : "png";
-
-  const manifest = await getManifest();
-  const id = nextImageId(manifest);
   const slug = slugify(tags[0]);
-  const path = `images/library/${id}_${slug}.${ext}`;
 
-  try {
-    await putRepoFile(path, base64, `GRACE: add library image ${id} (${tags.join(", ")})`);
-  } catch (e) {
-    return NextResponse.json({ error: `Couldn't save the image to the repo: ${e.message}` }, { status: 500 });
+  // Computing the next id from a manifest snapshot and then PUTting a brand
+  // new file isn't atomic: if a second upload lands (e.g. the user uploads
+  // a picture for another scene a moment later, before this one's manifest
+  // write has landed), both requests can compute the SAME id from the same
+  // stale snapshot and collide on the same path. GitHub's Contents API
+  // rejects a no-sha PUT to a path that already exists (422), which used to
+  // surface as "upload failed" and leave that scene uncovered. Retry with a
+  // freshly-read id instead of giving up on the first collision.
+  let id, path;
+  let lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const manifest = await getManifest();
+    id = nextImageId(manifest);
+    path = `images/library/${id}_${slug}.${ext}`;
+    try {
+      await putRepoFile(path, base64, `GRACE: add library image ${id} (${tags.join(", ")})`);
+      lastErr = null;
+      break;
+    } catch (e) {
+      lastErr = e;
+      if (!/422/.test(e.message)) break; // a real error (e.g. permissions) -- don't loop on it
+    }
+  }
+  if (lastErr) {
+    return NextResponse.json({ error: `Couldn't save the image to the repo: ${lastErr.message}` }, { status: 500 });
   }
 
   const entry = {

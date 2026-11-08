@@ -13,9 +13,20 @@ for it yet.
 import json
 import os
 
+from icons import _KEYWORD_ICONS
+
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LIBRARY_DIR = os.path.join(_BASE_DIR, "..", "images", "library")
 MANIFEST_PATH = os.path.join(LIBRARY_DIR, "manifest.json")
+
+# The fixed category tags (plane, bank, server, ...) vs. brand/proper-noun
+# tags (facebook, equifax, ...) -- mirrors grace/lib/keywords.js's
+# CATEGORY_TAGS. A scene and a library image sharing only ONE generic
+# category tag (e.g. both happen to mention "security") isn't a real
+# content match -- it's how an unrelated old picture from a totally
+# different script used to get reused. A match now needs either a shared
+# brand tag, or at least two shared category tags.
+_CATEGORY_TAGS = {icon for _, icon in _KEYWORD_ICONS}
 
 
 def load_manifest():
@@ -42,7 +53,16 @@ def best_match(scene_keywords, manifest=None):
     best, best_score = None, 0
     for entry in manifest:
         tags = {str(t).lower() for t in entry.get("tags", [])}
-        score = len(tags & kw)
+        overlap = tags & kw
+        if not overlap:
+            continue
+        # a single shared category tag (e.g. both just mention "security")
+        # is too weak to count -- require a shared brand tag, or 2+ shared
+        # category tags, before this counts as a real match at all.
+        has_brand_overlap = bool(overlap - _CATEGORY_TAGS)
+        if not has_brand_overlap and len(overlap) < 2:
+            continue
+        score = len(overlap) + (10 if has_brand_overlap else 0)  # prefer brand matches
         if score > best_score:
             best_score, best = score, entry
 
