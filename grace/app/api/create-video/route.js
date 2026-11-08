@@ -5,14 +5,15 @@ import { checkAppPassword } from "../../../lib/auth";
 export async function POST(req) {
   if (!(await checkAppPassword(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { script_text, title, visual_mode } = await req.json();
+  const { script_text, title, visual_mode, input_mode } = await req.json();
   if (!script_text || script_text.trim().length < 20) {
     return NextResponse.json({ error: "Script looks too short." }, { status: 400 });
   }
   const mode = visual_mode === "stickman" ? "stickman" : "pictures";
+  const inputMode = input_mode === "idea" ? "idea" : "script";
 
   try {
-    await dispatchWorkflow("manual-video.yml", { script_text, title: title || "", visual_mode: mode });
+    await dispatchWorkflow("manual-video.yml", { script_text, title: title || "", visual_mode: mode, input_mode: inputMode });
   } catch (e) {
     return NextResponse.json({ error: `Couldn't start the build: ${e.message}` }, { status: 500 });
   }

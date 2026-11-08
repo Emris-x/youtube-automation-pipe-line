@@ -34,6 +34,10 @@ export async function POST(req) {
   }
 
   const visualMode = body.visual_mode === "stickman" ? "stickman" : "pictures";
+  // "script": script_text is a finished script. "idea": script_text is a
+  // one-line idea + bullet facts for the free rule-based director (director.py)
+  // to shape into a script -- no AI call, zero cost.
+  const inputMode = body.input_mode === "idea" ? "idea" : "script";
 
   const queue = await getQueue();
   let nextId = nextScriptId(queue);
@@ -44,6 +48,7 @@ export async function POST(req) {
       id,
       title: body.title && texts.length === 1 ? body.title : null, // a shared title only makes sense for a single script
       script_text,
+      input_mode: inputMode,
       visual_mode: visualMode, // used by the "create now" button; scheduled auto-dispatch uses the schedule's own mode instead
       status: "queued",
       created_at: new Date().toISOString(),

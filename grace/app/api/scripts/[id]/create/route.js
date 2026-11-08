@@ -18,6 +18,7 @@ export async function POST(req, { params }) {
       script_text: item.script_text,
       title: item.title || "",
       visual_mode: item.visual_mode === "stickman" ? "stickman" : "pictures",
+      input_mode: item.input_mode === "idea" ? "idea" : "script",
     });
   } catch (e) {
     return NextResponse.json({ error: `Couldn't start the build: ${e.message}` }, { status: 500 });

@@ -27,6 +27,7 @@ import os
 import sys
 from datetime import datetime, timezone
 
+import director
 import segment_script
 import log_result
 
@@ -104,7 +105,12 @@ def _pop(out_script_path):
     # scheduled runs are unattended, so there's one standing decision
     # ("hands-off stickman" or "pictures, trusting the library's already
     # covered") rather than a per-script choice nobody's there to make.
-    script = segment_script.text_to_script(
+    # A queued entry written in "idea" mode (a one-line idea + bullet facts,
+    # from the Scripts tab's "just the idea" input) goes through the free
+    # rule-based director instead of the plain script segmenter -- same
+    # call shape, different source of the words.
+    to_script = director.idea_to_script if item.get("input_mode") == "idea" else segment_script.text_to_script
+    script = to_script(
         item["script_text"], title=item.get("title"), visual_mode=schedule.get("visual_mode", "pictures"),
     )
     _save(out_script_path, script)

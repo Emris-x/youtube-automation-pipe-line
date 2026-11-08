@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       script_text:
-        description: "Full script, scenes separated by a blank line"
+        description: "Full script (scenes separated by a blank line) — or, if input_mode is 'idea', a one-line idea followed by one fact per line"
         type: string
         required: true
       title:
@@ -18,6 +18,12 @@ on:
         type: choice
         options: ["pictures", "stickman"]
         default: "pictures"
+        required: false
+      input_mode:
+        description: "script (script_text is a finished script) or idea (script_text is an idea + bullet facts for the free rule-based director to shape into a script)"
+        type: choice
+        options: ["script", "idea"]
+        default: "script"
         required: false
 
 permissions:
@@ -50,7 +56,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Turn pasted script into a scene JSON
+      - name: Turn pasted script (or idea) into a scene JSON
         id: segment
         continue-on-error: true
         env:
@@ -60,9 +66,14 @@ jobs:
           SCRIPT_TEXT: ${{ github.event.inputs.script_text }}
           VIDEO_TITLE: ${{ github.event.inputs.title }}
           VIDEO_MODE: ${{ github.event.inputs.visual_mode }}
+          INPUT_MODE: ${{ github.event.inputs.input_mode }}
         run: |
           cd src
-          python segment_script.py ../scripts/manual_video.json
+          if [ "$INPUT_MODE" = "idea" ]; then
+            python director.py ../scripts/manual_video.json
+          else
+            python segment_script.py ../scripts/manual_video.json
+          fi
 
       - name: Build video
         id: build

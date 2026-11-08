@@ -55,6 +55,7 @@ export default function Page() {
   const [scriptsBulkText, setScriptsBulkText] = useState("");
   const [scriptsBulkTitle, setScriptsBulkTitle] = useState("");
   const [scriptsBulkMode, setScriptsBulkMode] = useState("pictures");
+  const [scriptsBulkInputMode, setScriptsBulkInputMode] = useState("script"); // "script" (finished text) | "idea" (free rule-based director writes it)
   const [scriptsAddBusy, setScriptsAddBusy] = useState(false);
   const [scriptsAddError, setScriptsAddError] = useState(null);
   const [scriptsRowBusy, setScriptsRowBusy] = useState(null); // id of a queue entry currently being created/removed
@@ -216,7 +217,12 @@ export default function Page() {
     authedFetch("/api/scripts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ script_text: scriptsBulkText, title: scriptsBulkTitle || undefined, visual_mode: scriptsBulkMode }),
+      body: JSON.stringify({
+        script_text: scriptsBulkText,
+        title: scriptsBulkTitle || undefined,
+        visual_mode: scriptsBulkMode,
+        input_mode: scriptsBulkInputMode,
+      }),
     })
       .then((r) => r.json())
       .then((d) => {
@@ -622,6 +628,15 @@ export default function Page() {
             Paste several at once by separating them with a line that's just <code style={{ color: "#eafff2" }}>---</code>.
           </p>
 
+          <InputModeToggle value={scriptsBulkInputMode} onChange={setScriptsBulkInputMode} />
+          {scriptsBulkInputMode === "idea" && (
+            <p style={{ color: DIM, fontSize: 12, margin: "4px 0 10px" }}>
+              Free rule-based director — no AI, no cost. First line is the idea, every line after is one fact, in order.
+              Prefix a line with <code style={{ color: "#eafff2" }}>ROOT:</code> to pick which fact is the root cause / payoff.
+              Plainer than an AI-written script, but it's yours instantly.
+            </p>
+          )}
+
           <VisualModeToggle value={scriptsBulkMode} onChange={setScriptsBulkMode} />
 
           <input
@@ -631,7 +646,11 @@ export default function Page() {
             style={{ ...inputStyle, width: "100%", boxSizing: "border-box" }}
           />
           <textarea
-            placeholder={"Paste one script, or several separated by a line with just ---"}
+            placeholder={
+              scriptsBulkInputMode === "idea"
+                ? "Line 1: the idea.\nLine 2+: one fact per line, in order.\nROOT: the fact that's actually the root cause (optional).\n\nSeparate multiple ideas with a line that's just ---"
+                : "Paste one script, or several separated by a line with just ---"
+            }
             value={scriptsBulkText}
             onChange={(e) => setScriptsBulkText(e.target.value)}
             rows={8}
@@ -1307,6 +1326,31 @@ function VisualModeToggle({ value, onChange, compact }) {
           style={{
             ...buttonStyle,
             padding: compact ? "4px 10px" : "6px 14px",
+            fontSize: 13,
+            borderColor: value === v ? GREEN : DIM,
+            color: value === v ? GREEN : DIM,
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function InputModeToggle({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 8, margin: "10px 0" }}>
+      {[
+        ["script", "full script"],
+        ["idea", "just the idea"],
+      ].map(([v, label]) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          style={{
+            ...buttonStyle,
+            padding: "6px 14px",
             fontSize: 13,
             borderColor: value === v ? GREEN : DIM,
             color: value === v ? GREEN : DIM,
