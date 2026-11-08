@@ -352,6 +352,17 @@
       ],
       "title": "Fish world ",
       "created_at": "2026-11-08T11:20:43.248Z"
+    },
+    {
+      "id": "img_0036",
+      "filename": "img_0036_hook.jpg",
+      "path": "images/library/img_0036_hook.jpg",
+      "tags": [
+        "hook"
+      ],
+      "title": "Fish world ",
+      "scene_text": "If fish took over the world tomorrow, your biggest problem wouldn't be sharks. It would be your landlord being a goldfish.",
+      "created_at": "2026-11-08T11:23:46.711Z"
     }
   ]
 }
