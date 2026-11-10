@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "interval_hours": 168,
   "last_dispatch_at": null,
   "visual_mode": "pictures"
