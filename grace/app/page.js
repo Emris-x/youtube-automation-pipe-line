@@ -53,6 +53,7 @@ export default function Page() {
   const [engine, setEngine] = useState("turbo"); // "turbo" (MoneyPrinterTurbo: stock footage + subtitles + music) | "classic" (GRACE's own renderer)
   const [createInputMode, setCreateInputMode] = useState("script"); // turbo only: "script" (pasted) | "ai" (LLM writes it from a topic)
   const [aspect, setAspect] = useState("9:16"); // turbo only: "9:16" Shorts | "16:9" regular
+  const [host, setHost] = useState("on"); // turbo only: "on" = the host character presents over the footage
   const [turboKeys, setTurboKeys] = useState(null); // {pexels, pixabay, groq, gemini} booleans, or null before first load
   const [keysOpen, setKeysOpen] = useState(false);
   const [keyDrafts, setKeyDrafts] = useState({});
@@ -454,7 +455,7 @@ export default function Page() {
     // status actually loaded -- if that check itself failed, let it through.
     if (engine === "turbo" && turboKeys) {
       const missing = !(turboKeys.pexels || turboKeys.pixabay)
-        ? "Add a Pexels key first — turbo needs it to fetch footage."
+        ? "Add a Pixabay or Pexels key first — turbo needs one to fetch footage."
         : createInputMode === "ai" && !(turboKeys.groq || turboKeys.gemini)
           ? "Add a Groq key first — it's what writes the script. Or switch to \"my script\"."
           : null;
@@ -506,6 +507,7 @@ export default function Page() {
           visual_mode: visualMode,
           engine,
           aspect,
+          host,
           input_mode: engine === "turbo" ? createInputMode : "script",
         }),
       });
@@ -638,6 +640,7 @@ export default function Page() {
                 options={[["script", "my script"], ["ai", "AI writes it"]]}
               />
               <ChoiceToggle value={aspect} onChange={setAspect} options={[["9:16", "short 9:16"], ["16:9", "wide 16:9"]]} />
+              <ChoiceToggle value={host} onChange={setHost} options={[["on", "host on"], ["off", "no host"]]} />
               <TurboKeysPanel
                 keys={turboKeys}
                 open={keysOpen}
@@ -1462,9 +1465,9 @@ function ChoiceToggle({ value, onChange, options }) {
 }
 
 const TURBO_KEY_FIELDS = [
-  { id: "pexels", label: "Pexels (footage)", where: "pexels.com/api", need: "required" },
+  { id: "pexels", label: "Pexels (footage)", where: "pexels.com/api", need: "one footage key required" },
   { id: "groq", label: "Groq (AI script + smarter footage)", where: "console.groq.com/keys", need: "optional" },
-  { id: "pixabay", label: "Pixabay (backup footage)", where: "pixabay.com/api/docs", need: "optional" },
+  { id: "pixabay", label: "Pixabay (footage)", where: "pixabay.com/api/docs", need: "one footage key required" },
   { id: "gemini", label: "Gemini (alternative AI)", where: "aistudio.google.com/app/apikey", need: "optional" },
 ];
 

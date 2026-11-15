@@ -46,6 +46,27 @@ time, and its later updates don't arrive here unless copied in by hand.
 Only the modules the video builder needs were copied (no web UI, no API
 server). The music is GRACE's own generated track (`music.py`).
 
+### The host character
+
+Turbo videos can have a host: a 3D character standing over the footage who
+presents and reacts to the narration (waves at the start, hands to head on
+"crashed" or "breach", shrugs on "somehow", points on "here's the cause",
+and so on). It is on by default; "no host" on the Create tab turns it off.
+
+- `assets/host/<name>/` holds the host's gesture library: short transparent
+  clips (`idle`, `talk_a`, `shock`, ...) plus `manifest.json`.
+- `src/host_overlay.py` picks a gesture for every two seconds of video from
+  the subtitle text and composites the clips on with ffmpeg. The keyword
+  rules are the `REACTIONS` list at the top of that file.
+- `tools/host/render_gestures.py` makes a gesture library from a rigged 3D
+  model (`.glb` with a Mixamo-style skeleton), using Blender. It is a
+  one-time job per character, about 25 minutes on a plain CPU, and is not
+  part of a video build. The poses are the `GESTURES` table in that file.
+
+The current host, `robot`, was rendered from a model supplied by the repo
+owner. The model file itself is not in this repo. To add another character,
+run the render script on its model into `assets/host/<new-name>/`.
+
 Turbo needs keys, set from GRACE itself (Create → keys); they are stored as
 encrypted repo secrets:
 

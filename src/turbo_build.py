@@ -27,6 +27,7 @@ Env (all set by manual-video.yml):
   SCRIPT_TEXT, VIDEO_TITLE, INPUT_MODE, VIDEO_ASPECT
   PEXELS_API_KEY, PIXABAY_API_KEY           (at least one is required)
   GROQ_API_KEY, GEMINI_API_KEY              (optional; required for "ai")
+  HOST ("on"/"off"), HOST_NAME               (host character; default on, "robot")
   TURBO_LLM_MODEL, TURBO_VOICE, TURBO_SUBTITLE_MODE, TURBO_BGM_VOLUME (optional)
 """
 import json
@@ -38,6 +39,7 @@ import uuid
 
 from icons import _KEYWORD_ICONS, brand_tags
 from music import generate_ambient_wav
+import host_overlay
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
@@ -95,7 +97,8 @@ def _pick_sources():
     else:
         raise TurboError(
             "No stock-footage key set. Open GRACE > create > keys and add a "
-            "free Pexels key (pexels.com/api), then try again."
+            "free Pixabay key (pixabay.com/api/docs) or Pexels key (pexels.com/api), "
+            "then try again."
         )
     if os.environ.get("GROQ_API_KEY", "").strip():
         llm = ("groq", os.environ["GROQ_API_KEY"].strip())
@@ -186,6 +189,12 @@ def build(script_json_path):
 
     source, llm = _pick_sources()
 
+    # The host character (assets/host/<name>/) presents over the footage.
+    # On unless switched off, and only if that host's clips actually exist.
+    host_name = (os.environ.get("HOST_NAME") or "robot").strip()
+    use_host = (os.environ.get("HOST") or "on").strip() != "off" and os.path.isfile(
+        os.path.join(host_overlay.HOSTS_DIR, host_name, "manifest.json"))
+
     params = {
         "video_source": source,
         "video_aspect": aspect,
@@ -196,9 +205,10 @@ def build(script_json_path):
         "font_name": "BeVietnamPro-Bold.ttf",
         "font_size": 58,
         # 70% down the frame: clear of the Shorts title/buttons overlay that
-        # covers the very bottom.
+        # covers the very bottom. With the host on screen the subtitles move
+        # up to 36%, above the host's head, so neither covers the other.
         "subtitle_position": "custom",
-        "custom_position": 70.0,
+        "custom_position": 36.0 if use_host else 70.0,
         "subtitle_display_mode": os.environ.get("TURBO_SUBTITLE_MODE") or "sentence",
         "text_fore_color": "#FFFFFF",
         "stroke_color": "#000000",
@@ -283,6 +293,18 @@ def build(script_json_path):
     out_name = os.path.splitext(os.path.basename(script_json_path))[0]
     final_path = os.path.join(OUTPUT_DIR, f"{out_name}.mp4")
     shutil.copyfile(video, final_path)
+
+    if use_host:
+        # Not allowed to sink the build: if anything about the host fails,
+        # the video without it is still a finished video.
+        hosted = final_path + ".host.mp4"
+        try:
+            host_overlay.add_host(final_path, result.get("subtitle_path") or "", hosted, host=host_name)
+            os.replace(hosted, final_path)
+        except Exception as e:
+            print(f"[turbo] host overlay failed ({e.__class__.__name__}: {e}); keeping the video without the host")
+            if os.path.exists(hosted):
+                os.remove(hosted)
 
     narration = str(result.get("script") or narration).strip()
     terms = result.get("terms") or []

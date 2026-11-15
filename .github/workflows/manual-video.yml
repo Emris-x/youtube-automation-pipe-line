@@ -37,6 +37,12 @@ on:
         options: ["9:16", "16:9"]
         default: "9:16"
         required: false
+      host:
+        description: "turbo engine only: on = the host character presents over the footage and reacts to the narration"
+        type: choice
+        options: ["on", "off"]
+        default: "on"
+        required: false
 
 permissions:
   contents: write
@@ -99,6 +105,7 @@ jobs:
           SCRIPT_TEXT: ${{ github.event.inputs.script_text }}
           VIDEO_TITLE: ${{ github.event.inputs.title }}
           VIDEO_ASPECT: ${{ github.event.inputs.aspect }}
+          HOST: ${{ github.event.inputs.host }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

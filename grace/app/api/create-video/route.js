@@ -5,7 +5,7 @@ import { checkAppPassword } from "../../../lib/auth";
 export async function POST(req) {
   if (!(await checkAppPassword(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { script_text, title, visual_mode, input_mode, engine, aspect } = await req.json();
+  const { script_text, title, visual_mode, input_mode, engine, aspect, host } = await req.json();
   // "turbo" = MoneyPrinterTurbo (stock footage, subtitles, music);
   // "classic" = GRACE's own stickman / pictures renderer. Classic stays the
   // fallback for any caller that doesn't say, so an older cached copy of
@@ -29,6 +29,7 @@ export async function POST(req) {
       input_mode: inputMode,
       engine: eng,
       aspect: asp,
+      host: host === "off" ? "off" : "on",
     });
   } catch (e) {
     return NextResponse.json({ error: `Couldn't start the build: ${e.message}` }, { status: 500 });
