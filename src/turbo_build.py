@@ -1,17 +1,17 @@
 """
-GRACE's "turbo" engine: builds the video with MoneyPrinterTurbo
-(https://github.com/harry0703/MoneyPrinterTurbo, MIT) instead of GRACE's own
-motion-graphics renderer.
+GRACE's "turbo" engine: stock footage matched to the script, burned-in
+subtitles, background music, 9:16 or 16:9, and optional LLM script writing.
 
-MoneyPrinterTurbo is NOT copied into this repo. The workflow checks it out
-at a pinned commit next to this one and this file drives its command-line
-interface, then hands the finished MP4 back to the exact same upload +
-history steps the classic engine uses. So everything after "a video file
-exists at output/manual_video.mp4" is unchanged.
+The functions that do this live in src/turbo/ -- copied from
+MoneyPrinterTurbo (https://github.com/harry0703/MoneyPrinterTurbo, MIT,
+copyright Harry; see src/turbo/LICENSE) and now part of this repo. This
+file is GRACE's side of it: it works out keys, narration and footage search
+terms, calls those functions directly, and hands the finished MP4 to the
+same upload + history steps the classic engine uses.
 
 What it does, in order:
   1. works out which keys are available (stock footage + optional LLM)
-  2. writes MoneyPrinterTurbo's config.toml from them
+  2. writes the turbo package's config file from them
   3. works out the narration:
        input_mode "script"/"idea" -> scripts/manual_video.json already
            exists (segment_script.py / director.py wrote it); its scene
@@ -20,11 +20,11 @@ What it does, in order:
   4. picks footage search terms (LLM if there is one, else a rule-based
      mapping from GRACE's own keyword tags -- so a pasted script needs no
      LLM key at all)
-  5. runs the build, copies the result to output/, writes metadata
+  5. generates GRACE's own ambient music track for the background
+  6. runs the build, copies the result to output/, writes metadata
 
 Env (all set by manual-video.yml):
   SCRIPT_TEXT, VIDEO_TITLE, INPUT_MODE, VIDEO_ASPECT
-  MPT_DIR, MPT_PYTHON
   PEXELS_API_KEY, PIXABAY_API_KEY           (at least one is required)
   GROQ_API_KEY, GEMINI_API_KEY              (optional; required for "ai")
   TURBO_LLM_MODEL, TURBO_VOICE, TURBO_SUBTITLE_MODE, TURBO_BGM_VOLUME (optional)
@@ -33,16 +33,20 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
-import threading
+import uuid
 
 from icons import _KEYWORD_ICONS, brand_tags
+from music import generate_ambient_wav
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 OUTPUT_DIR = os.path.join(ROOT, "output")
 RESULT_PATH = os.path.join(ROOT, "scripts", "last_result.json")
+# Working folder for the turbo package: its config file, downloaded footage
+# and per-build task files. Recreated every CI run, never committed.
+RUNTIME_DIR = os.path.join(ROOT, "turbo_runtime")
+ASSETS_DIR = os.path.join(HERE, "turbo", "_assets")
 
 # Same voice the classic engine is locked to (see tts.py) -- one channel,
 # one voice. MoneyPrinterTurbo wants the gender suffix on Edge voice ids.
@@ -77,9 +81,6 @@ SERIES_PROMPT = (
     "publicly documented; if a detail is uncertain, leave it out. No headings, "
     "no stage directions, no emojis. About 150 to 190 words."
 )
-
-
-_FAIL_LINE_RE = re.compile(r"CLI task failed: .*?stage=([\w-]+), error=(.*)$")
 
 
 class TurboError(Exception):
@@ -133,31 +134,38 @@ def _narration_from_script_json(path):
     return script, "\n".join(lines)
 
 
-def _first_json_object(stdout):
-    """The CLI prints exactly one JSON object on stdout, but tolerate stray
-    lines around it rather than fail a finished render on a parse error."""
-    for line in reversed(stdout.strip().splitlines()):
-        line = line.strip()
-        if line.startswith("{"):
-            try:
-                return json.loads(line)
-            except json.JSONDecodeError:
-                continue
-    return None
+def _write_config(source, llm):
+    """Writes the turbo package's config.toml for this run. Starts from the
+    bundled example (so every setting it expects exists with its default)
+    and overrides only what GRACE needs. Must run BEFORE `import turbo`:
+    the package reads this file once, at import time."""
+    import toml
 
+    with open(os.path.join(ASSETS_DIR, "config.example.toml"), encoding="utf-8") as f:
+        cfg = toml.load(f)
 
-def _resolve_video(path, mpt_dir, task_id):
-    candidates = [path, os.path.join(mpt_dir, path)]
-    task_dir = os.path.join(mpt_dir, "storage", "tasks", task_id or "")
-    candidates.append(os.path.join(task_dir, os.path.basename(path)))
-    for c in candidates:
-        if c and os.path.isfile(c):
-            return c
-    if os.path.isdir(task_dir):
-        finals = sorted(f for f in os.listdir(task_dir) if f.startswith("final") and f.endswith(".mp4"))
-        if finals:
-            return os.path.join(task_dir, finals[0])
-    raise TurboError(f"Build reported success but no video file was found ({path}).")
+    def keys(env_name):
+        return [k.strip() for k in os.environ.get(env_name, "").split(",") if k.strip()]
+
+    cfg["log_level"] = "INFO"
+    app = cfg.setdefault("app", {})
+    app["pexels_api_keys"] = keys("PEXELS_API_KEY")
+    app["pixabay_api_keys"] = keys("PIXABAY_API_KEY")
+    app["video_source"] = source
+    app["subtitle_provider"] = "edge"
+    if llm:
+        provider, key = llm
+        app["llm_provider"] = provider
+        app[f"{provider}_api_key"] = key
+        model = (os.environ.get("TURBO_LLM_MODEL") or "").strip()
+        if model:
+            app[f"{provider}_model_name"] = model
+
+    os.makedirs(RUNTIME_DIR, mode=0o700, exist_ok=True)
+    path = os.path.join(RUNTIME_DIR, "config.toml")
+    with open(path, "w", encoding="utf-8") as f:
+        toml.dump(cfg, f)
+    os.chmod(path, 0o600)
 
 
 def _tags_from(terms, text):
@@ -170,8 +178,6 @@ def _tags_from(terms, text):
 
 
 def build(script_json_path):
-    mpt_dir = os.path.abspath(os.environ.get("MPT_DIR") or os.path.join(ROOT, ".mpt"))
-    mpt_python = os.environ.get("MPT_PYTHON") or sys.executable
     input_mode = (os.environ.get("INPUT_MODE") or "script").strip()
     aspect = os.environ.get("VIDEO_ASPECT") or "9:16"
     if aspect not in ("9:16", "16:9", "1:1"):
@@ -180,13 +186,29 @@ def build(script_json_path):
 
     source, llm = _pick_sources()
 
-    cfg_env = dict(os.environ, TURBO_VIDEO_SOURCE=source)
-    if llm:
-        cfg_env["TURBO_LLM_PROVIDER"], cfg_env["TURBO_LLM_KEY"] = llm
-    subprocess.run([mpt_python, os.path.join(HERE, "turbo_config.py"), mpt_dir], check=True, env=cfg_env)
-
-    cmd = [mpt_python, "cli.py", "--video-source", source, "--video-aspect", aspect]
+    params = {
+        "video_source": source,
+        "video_aspect": aspect,
+        "video_language": "en-US",
+        "video_count": 1,
+        "voice_name": os.environ.get("TURBO_VOICE") or DEFAULT_VOICE,
+        "subtitle_enabled": True,
+        "font_name": "BeVietnamPro-Bold.ttf",
+        "font_size": 58,
+        # 70% down the frame: clear of the Shorts title/buttons overlay that
+        # covers the very bottom.
+        "subtitle_position": "custom",
+        "custom_position": 70.0,
+        "subtitle_display_mode": os.environ.get("TURBO_SUBTITLE_MODE") or "sentence",
+        "text_fore_color": "#FFFFFF",
+        "stroke_color": "#000000",
+        "stroke_width": 2.0,
+        "video_concat_mode": "sequential",
+        "match_materials_to_script": True,
+        "video_clip_duration": 4,
+    }
     script_meta = None
+    narration = ""
 
     if input_mode == "ai":
         if not llm:
@@ -203,55 +225,46 @@ def build(script_json_path):
         prompt = SERIES_PROMPT
         if facts:
             prompt += " Build the script around these facts: " + " | ".join(facts)
-        cmd += ["--video-subject", subject, "--video-language", "en-US",
-                "--paragraph-number", "3", "--video-script-prompt", prompt]
+        params.update(video_subject=subject, video_script="", paragraph_number=3, video_script_prompt=prompt)
         title = title or subject
     else:
         script_meta, narration = _narration_from_script_json(script_json_path)
         title = title or script_meta.get("title") or narration[:70]
-        cmd += ["--video-script", narration, "--video-subject", title, "--video-language", "en-US"]
+        params.update(video_subject=title, video_script=narration)
         if not llm:
-            cmd += ["--video-terms", ",".join(rule_based_terms(narration))]
+            params["video_terms"] = rule_based_terms(narration)
 
-    cmd += [
-        "--voice-name", os.environ.get("TURBO_VOICE") or DEFAULT_VOICE,
-        "--bgm-type", "random",
-        "--bgm-volume", os.environ.get("TURBO_BGM_VOLUME") or "0.15",
-        "--subtitle-enabled",
-        "--font-name", "BeVietnamPro-Bold.ttf",
-        "--font-size", "58",
-        "--subtitle-position", "custom", "--custom-position", "70",
-        "--subtitle-display-mode", os.environ.get("TURBO_SUBTITLE_MODE") or "sentence",
-        "--text-fore-color", "#FFFFFF", "--stroke-color", "#000000", "--stroke-width", "2",
-        "--video-concat-mode", "sequential",
-        "--match-materials-to-script",
-        "--video-clip-duration", "4",
-        "--video-count", "1",
-    ]
+    # The turbo package reads its config and working folder at import time,
+    # so both have to be in place before the imports below.
+    _write_config(source, llm)
+    os.environ["MPT_HOME"] = RUNTIME_DIR
+    from turbo.models.schema import VideoParams
+    from turbo.services import task as turbo_task
+    from turbo.utils import utils as turbo_utils
+
+    # GRACE's own code-generated ambient track (music.py) as the background
+    # music, looped to the video's length by the builder.
+    bgm_volume = float(os.environ.get("TURBO_BGM_VOLUME") or 0.25)
+    try:
+        bgm_name = "grace_ambient.wav"
+        generate_ambient_wav(os.path.join(turbo_utils.song_dir(), bgm_name), 60.0)
+        params.update(bgm_type="custom", bgm_file=bgm_name, bgm_volume=bgm_volume)
+    except Exception as e:
+        print(f"[turbo] music generation failed ({e.__class__.__name__}: {e}), continuing without it")
+        params.update(bgm_type="")
 
     print(f"[turbo] source={source} llm={llm[0] if llm else 'none (rule-based terms)'} "
           f"mode={input_mode} aspect={aspect}")
-    # stdout is the machine-readable result. stderr is the build log: pass
-    # it through to the Actions log line by line, and remember the CLI's own
-    # "task failed ... stage=X, error=Y" line -- on a failure with no video
-    # it prints no JSON, so that line is the only place the reason appears.
-    proc = subprocess.Popen(cmd, cwd=mpt_dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    out_chunks = []
-    reader = threading.Thread(target=lambda: out_chunks.append(proc.stdout.read()), daemon=True)
-    reader.start()
-    fail_stage = fail_error = None
-    for line in proc.stderr:
-        sys.stderr.write(line)
-        m = _FAIL_LINE_RE.search(line)
-        if m:
-            fail_stage, fail_error = m.group(1), m.group(2).strip()
-    proc.wait()
-    reader.join(timeout=10)
-    payload = _first_json_object("".join(out_chunks))
-    result = (payload or {}).get("result") or {}
-    if proc.returncode != 0 or not result.get("videos"):
-        stage = result.get("failed_stage") or fail_stage or "unknown"
-        err = result.get("error") or fail_error or "see the run log for details"
+    task_id = str(uuid.uuid4())
+    result = turbo_task.start(
+        task_id=task_id,
+        params=VideoParams(**params),
+        stop_at="video",
+        allow_server_file_input=True,
+    ) or {}
+    if not result.get("videos") or result.get("failed_stage"):
+        stage = result.get("failed_stage") or "unknown"
+        err = result.get("error") or "see the run log for details"
         hint = ""
         if stage == "materials":
             hint = " (no usable footage came back -- check the Pexels key, or try different wording)"
@@ -259,15 +272,19 @@ def build(script_json_path):
             hint = " (the LLM call failed -- check the LLM key or its free-tier limit)"
         elif stage == "audio":
             hint = " (voice generation failed -- usually a temporary Edge TTS hiccup; retry)"
-        raise TurboError(f"MoneyPrinterTurbo failed at '{stage}': {err}{hint}")
+        raise TurboError(f"Turbo build failed at '{stage}': {err}{hint}")
 
-    video = _resolve_video(result["videos"][0], mpt_dir, (payload or {}).get("task_id"))
+    video = result["videos"][0]
+    if not os.path.isfile(video):
+        video = os.path.join(RUNTIME_DIR, video)
+    if not os.path.isfile(video):
+        raise TurboError(f"Build reported success but no video file was found ({result['videos'][0]}).")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     out_name = os.path.splitext(os.path.basename(script_json_path))[0]
     final_path = os.path.join(OUTPUT_DIR, f"{out_name}.mp4")
     shutil.copyfile(video, final_path)
 
-    narration = str(result.get("script") or (narration if script_meta else "")).strip()
+    narration = str(result.get("script") or narration).strip()
     terms = result.get("terms") or []
     if isinstance(terms, str):
         terms = [t.strip() for t in terms.split(",")]

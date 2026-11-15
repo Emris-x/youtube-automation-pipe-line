@@ -1,7 +1,20 @@
 Pillow>=10.0.0
-edge-tts>=6.1.0
+edge-tts==7.3.1
 anthropic>=0.40.0
 requests>=2.31.0
 google-api-python-client>=2.100.0
 google-auth-oauthlib>=1.1.0
 google-auth-httplib2>=0.1.1
+
+# Turbo engine (src/turbo/, from MoneyPrinterTurbo). Versions are the ones
+# that code was written and tested against -- MoviePy in particular changed
+# its API between 1.x and 2.x, so don't loosen these casually.
+moviepy==2.2.1
+imageio-ffmpeg==0.6.0
+openai==2.24.0
+google-genai==2.11.0
+toml==0.10.2
+loguru==0.7.3
+redis==5.2.0
+filelock>=4.2.1,<5
+khatt[video]==0.4.0

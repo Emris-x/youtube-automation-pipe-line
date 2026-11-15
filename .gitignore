@@ -12,5 +12,4 @@ scripts/last_result.json
 *.wav
 grace/node_modules/
 grace/.next/
-.mpt/
-.mpt-venv/
+turbo_runtime/

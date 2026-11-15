@@ -26,7 +26,7 @@ on:
         default: "script"
         required: false
       engine:
-        description: "turbo (MoneyPrinterTurbo: real stock footage, subtitles, music) or classic (GRACE's own stickman / pictures renderer)"
+        description: "turbo (real stock footage, subtitles, music -- src/turbo) or classic (GRACE's own stickman / pictures renderer)"
         type: choice
         options: ["turbo", "classic"]
         default: "turbo"
@@ -44,23 +44,9 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      # Pinned on purpose: MoneyPrinterTurbo changes daily, and an unpinned
-      # checkout would let an upstream change break (or alter) every build
-      # with no commit on this side. Bump this SHA deliberately, after a
-      # test build, to pick up their updates.
-      MPT_REF: ce289ffb61a118779c56d6b4a34181905dbed2b9
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
-      - name: Fetch MoneyPrinterTurbo (turbo engine)
-        if: github.event.inputs.engine != 'classic'
-        uses: actions/checkout@v4
-        with:
-          repository: harry0703/MoneyPrinterTurbo
-          ref: ${{ env.MPT_REF }}
-          path: .mpt
 
       - uses: actions/setup-python@v5
         with:
@@ -81,14 +67,6 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r requirements.txt
-
-      - name: Install MoneyPrinterTurbo dependencies (turbo engine)
-        if: github.event.inputs.engine != 'classic'
-        run: |
-          # Its own virtualenv: it pins MoviePy/Pillow versions that must not
-          # be allowed to up- or downgrade what GRACE's classic renderer uses.
-          python -m venv .mpt-venv
-          .mpt-venv/bin/pip install -r .mpt/requirements.txt
 
       - name: Turn pasted script (or idea) into a scene JSON
         id: segment
@@ -127,8 +105,6 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TURBO_LLM_MODEL: ${{ vars.TURBO_LLM_MODEL }}
           TURBO_SUBTITLE_MODE: ${{ vars.TURBO_SUBTITLE_MODE }}
-          MPT_DIR: ${{ github.workspace }}/.mpt
-          MPT_PYTHON: ${{ github.workspace }}/.mpt-venv/bin/python
         run: |
           cd src
           if [ "$ENGINE" = "classic" ]; then

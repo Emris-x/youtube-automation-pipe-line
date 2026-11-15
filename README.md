@@ -26,15 +26,25 @@ scripts/
 
 GRACE can build a video two ways, picked per video on the Create tab:
 
-- **turbo** — runs [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)
-  (MIT, by harry0703): real stock footage matched to the script, burned-in
-  subtitles, background music, 9:16 or 16:9. Optionally an LLM writes the
-  script from a topic. Its code is not copied here: `manual-video.yml`
-  checks it out at a pinned commit (`MPT_REF`) and `src/turbo_build.py`
-  drives its CLI, then hands the MP4 to the same upload + history steps.
-- **classic** — GRACE's own renderer (`build_video.py`): stickman or
+- **turbo** — real stock footage matched to the script, burned-in
+  subtitles, background music, 9:16 or 16:9, and optionally an LLM that
+  writes the script from a topic. The code is in `src/turbo/`, driven by
+  `src/turbo_build.py`.
+- **classic** — GRACE's original renderer (`build_video.py`): stickman or
   library-picture motion graphics. The Scripts queue and schedule still use
   this one.
+
+Both end the same way: an MP4 in `output/`, then `upload.py` and the
+history log.
+
+`src/turbo/` was copied from
+[MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo) v1.3.10
+(commit `ce289ff`), MIT licensed, copyright Harry. Its licence travels with
+it in `src/turbo/LICENSE` and has to stay there. It is part of this repo
+now, not a dependency: nothing is downloaded from that project at build
+time, and its later updates don't arrive here unless copied in by hand.
+Only the modules the video builder needs were copied (no web UI, no API
+server). The music is GRACE's own generated track (`music.py`).
 
 Turbo needs keys, set from GRACE itself (Create → keys); they are stored as
 encrypted repo secrets:
@@ -50,9 +60,6 @@ With only a Pexels key, a pasted script still builds: footage search terms
 come from keyword rules in `turbo_build.py` instead of an LLM. Optional repo
 variables: `TURBO_LLM_MODEL` (override the provider's default model),
 `TURBO_SUBTITLE_MODE` (`sentence` or `word_by_word`).
-
-To take MoneyPrinterTurbo updates, change `MPT_REF` in `manual-video.yml`
-to a newer commit SHA and run one test build.
 
 ## GRACE — the phone app
 
