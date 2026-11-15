@@ -1,5 +1,16 @@
 [
   {
+    "run_id": "43756195779",
+    "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/43756195779",
+    "timestamp": "2026-11-15T20:07:39.725274+00:00",
+    "title": "Untitled",
+    "status": "failed",
+    "failed_step": "segment",
+    "error": null,
+    "video_url": null,
+    "source": "daily-video.yml"
+  },
+  {
     "run_id": "43633365034",
     "run_url": "https://github.com/Emris-x/youtube-automation-pipe-line/actions/runs/43633365034",
     "timestamp": "2026-11-14T19:41:22.706068+00:00",
