@@ -20,10 +20,28 @@ on:
         default: "pictures"
         required: false
       input_mode:
-        description: "script (script_text is a finished script) or idea (script_text is an idea + bullet facts for the free rule-based director to shape into a script)"
+        description: "script (script_text is a finished script), idea (idea + bullet facts for the free rule-based director), or ai (turbo engine only: topic on the first line, optional facts below, an LLM writes the script)"
         type: choice
-        options: ["script", "idea"]
+        options: ["script", "idea", "ai"]
         default: "script"
+        required: false
+      engine:
+        description: "turbo (real stock footage, subtitles, music -- src/turbo) or classic (GRACE's own stickman / pictures renderer)"
+        type: choice
+        options: ["turbo", "classic"]
+        default: "turbo"
+        required: false
+      aspect:
+        description: "turbo engine only: 9:16 (Shorts) or 16:9 (regular video)"
+        type: choice
+        options: ["9:16", "16:9"]
+        default: "9:16"
+        required: false
+      host:
+        description: "turbo engine only: on = the host character presents over the footage and reacts to the narration"
+        type: choice
+        options: ["on", "off"]
+        default: "on"
         required: false
 
 permissions:
@@ -32,7 +50,7 @@ permissions:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -69,7 +87,9 @@ jobs:
           INPUT_MODE: ${{ github.event.inputs.input_mode }}
         run: |
           cd src
-          if [ "$INPUT_MODE" = "idea" ]; then
+          if [ "$INPUT_MODE" = "ai" ]; then
+            echo "ai mode: the turbo engine writes the script itself, nothing to segment."
+          elif [ "$INPUT_MODE" = "idea" ]; then
             python director.py ../scripts/manual_video.json
           else
             python segment_script.py ../scripts/manual_video.json
@@ -79,9 +99,30 @@ jobs:
         id: build
         if: steps.segment.outcome == 'success'
         continue-on-error: true
+        env:
+          ENGINE: ${{ github.event.inputs.engine }}
+          INPUT_MODE: ${{ github.event.inputs.input_mode }}
+          SCRIPT_TEXT: ${{ github.event.inputs.script_text }}
+          VIDEO_TITLE: ${{ github.event.inputs.title }}
+          VIDEO_ASPECT: ${{ github.event.inputs.aspect }}
+          HOST: ${{ github.event.inputs.host }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TURBO_LLM_MODEL: ${{ vars.TURBO_LLM_MODEL }}
+          TURBO_SUBTITLE_MODE: ${{ vars.TURBO_SUBTITLE_MODE }}
         run: |
           cd src
-          python build_video.py ../scripts/manual_video.json
+          if [ "$ENGINE" = "classic" ]; then
+            if [ "$INPUT_MODE" = "ai" ]; then
+              echo '{"error": "AI script writing only works with the turbo engine."}' > ../scripts/last_result.json
+              exit 1
+            fi
+            python build_video.py ../scripts/manual_video.json
+          else
+            python turbo_build.py ../scripts/manual_video.json
+          fi
 
       - name: Upload to YouTube
         id: upload
@@ -107,6 +148,7 @@ jobs:
         if: always()
         env:
           SEGMENT_OUTCOME: ${{ steps.segment.outcome }}
+          ENGINE: ${{ github.event.inputs.engine }}
           BUILD_OUTCOME: ${{ steps.build.outcome }}
           UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
           RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

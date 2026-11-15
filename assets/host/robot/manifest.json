@@ -1,0 +1,19 @@
+{
+  "fps": 24,
+  "frames": 48,
+  "width": 600,
+  "height": 800,
+  "gestures": [
+    "cheer",
+    "idle",
+    "nope",
+    "point",
+    "shock",
+    "shrug",
+    "talk_a",
+    "talk_b",
+    "talk_c",
+    "think",
+    "wave"
+  ]
+}

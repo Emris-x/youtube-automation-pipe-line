@@ -12,3 +12,4 @@ scripts/last_result.json
 *.wav
 grace/node_modules/
 grace/.next/
+turbo_runtime/

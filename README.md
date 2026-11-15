@@ -22,6 +22,66 @@ scripts/
   daily-video.yml        the schedule that runs it all automatically
 ```
 
+## Two engines
+
+GRACE can build a video two ways, picked per video on the Create tab:
+
+- **turbo** — real stock footage matched to the script, burned-in
+  subtitles, background music, 9:16 or 16:9, and optionally an LLM that
+  writes the script from a topic. The code is in `src/turbo/`, driven by
+  `src/turbo_build.py`.
+- **classic** — GRACE's original renderer (`build_video.py`): stickman or
+  library-picture motion graphics. The Scripts queue and schedule still use
+  this one.
+
+Both end the same way: an MP4 in `output/`, then `upload.py` and the
+history log.
+
+`src/turbo/` was copied from
+[MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo) v1.3.10
+(commit `ce289ff`), MIT licensed, copyright Harry. Its licence travels with
+it in `src/turbo/LICENSE` and has to stay there. It is part of this repo
+now, not a dependency: nothing is downloaded from that project at build
+time, and its later updates don't arrive here unless copied in by hand.
+Only the modules the video builder needs were copied (no web UI, no API
+server). The music is GRACE's own generated track (`music.py`).
+
+### The host character
+
+Turbo videos can have a host: a 3D character standing over the footage who
+presents and reacts to the narration (waves at the start, hands to head on
+"crashed" or "breach", shrugs on "somehow", points on "here's the cause",
+and so on). It is on by default; "no host" on the Create tab turns it off.
+
+- `assets/host/<name>/` holds the host's gesture library: short transparent
+  clips (`idle`, `talk_a`, `shock`, ...) plus `manifest.json`.
+- `src/host_overlay.py` picks a gesture for every two seconds of video from
+  the subtitle text and composites the clips on with ffmpeg. The keyword
+  rules are the `REACTIONS` list at the top of that file.
+- `tools/host/render_gestures.py` makes a gesture library from a rigged 3D
+  model (`.glb` with a Mixamo-style skeleton), using Blender. It is a
+  one-time job per character, about 25 minutes on a plain CPU, and is not
+  part of a video build. The poses are the `GESTURES` table in that file.
+
+The current host, `robot`, was rendered from a model supplied by the repo
+owner. The model file itself is not in this repo. To add another character,
+run the render script on its model into `assets/host/<new-name>/`.
+
+Turbo needs keys, set from GRACE itself (Create → keys); they are stored as
+encrypted repo secrets:
+
+| Secret | Needed for | Free at |
+|---|---|---|
+| `PEXELS_API_KEY` | footage (required) | pexels.com/api |
+| `GROQ_API_KEY` | "AI writes it", and LLM-picked footage terms | console.groq.com/keys |
+| `PIXABAY_API_KEY` | footage, used if no Pexels key | pixabay.com/api/docs |
+| `GEMINI_API_KEY` | alternative LLM, used if no Groq key | aistudio.google.com/app/apikey |
+
+With only a Pexels key, a pasted script still builds: footage search terms
+come from keyword rules in `turbo_build.py` instead of an LLM. Optional repo
+variables: `TURBO_LLM_MODEL` (override the provider's default model),
+`TURBO_SUBTITLE_MODE` (`sentence` or `word_by_word`).
+
 ## GRACE — the phone app
 
 `grace/` is a small Next.js PWA, deployed to Vercel at
