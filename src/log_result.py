@@ -61,7 +61,10 @@ def main():
 
     metadata = _load_json(METADATA_PATH, {})
     result = _load_json(RESULT_PATH, {})
-    if failed_step == "upload":
+    # upload.py and turbo_build.py both leave their failure reason in
+    # scripts/last_result.json, so a failed turbo build shows *why* in
+    # GRACE's History instead of just "failed at: build".
+    if failed_step in ("build", "upload"):
         error = result.get("error")
 
     entry = {
@@ -73,6 +76,7 @@ def main():
         "failed_step": failed_step,
         "error": error,
         "video_url": result.get("video_url") if upload_ok else None,
+        "engine": os.environ.get("ENGINE") or metadata.get("engine") or "classic",
     }
 
     append_history_entry(entry)

@@ -22,6 +22,38 @@ scripts/
   daily-video.yml        the schedule that runs it all automatically
 ```
 
+## Two engines
+
+GRACE can build a video two ways, picked per video on the Create tab:
+
+- **turbo** — runs [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)
+  (MIT, by harry0703): real stock footage matched to the script, burned-in
+  subtitles, background music, 9:16 or 16:9. Optionally an LLM writes the
+  script from a topic. Its code is not copied here: `manual-video.yml`
+  checks it out at a pinned commit (`MPT_REF`) and `src/turbo_build.py`
+  drives its CLI, then hands the MP4 to the same upload + history steps.
+- **classic** — GRACE's own renderer (`build_video.py`): stickman or
+  library-picture motion graphics. The Scripts queue and schedule still use
+  this one.
+
+Turbo needs keys, set from GRACE itself (Create → keys); they are stored as
+encrypted repo secrets:
+
+| Secret | Needed for | Free at |
+|---|---|---|
+| `PEXELS_API_KEY` | footage (required) | pexels.com/api |
+| `GROQ_API_KEY` | "AI writes it", and LLM-picked footage terms | console.groq.com/keys |
+| `PIXABAY_API_KEY` | footage, used if no Pexels key | pixabay.com/api/docs |
+| `GEMINI_API_KEY` | alternative LLM, used if no Groq key | aistudio.google.com/app/apikey |
+
+With only a Pexels key, a pasted script still builds: footage search terms
+come from keyword rules in `turbo_build.py` instead of an LLM. Optional repo
+variables: `TURBO_LLM_MODEL` (override the provider's default model),
+`TURBO_SUBTITLE_MODE` (`sentence` or `word_by_word`).
+
+To take MoneyPrinterTurbo updates, change `MPT_REF` in `manual-video.yml`
+to a newer commit SHA and run one test build.
+
 ## GRACE — the phone app
 
 `grace/` is a small Next.js PWA, deployed to Vercel at

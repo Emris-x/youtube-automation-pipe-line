@@ -19,6 +19,10 @@ export async function POST(req, { params }) {
       title: item.title || "",
       visual_mode: item.visual_mode === "stickman" ? "stickman" : "pictures",
       input_mode: item.input_mode === "idea" ? "idea" : "script",
+      // Queue entries carry a pictures/stickman choice, which only the
+      // classic renderer understands -- say so explicitly, since the
+      // workflow's own default engine is turbo.
+      engine: "classic",
     });
   } catch (e) {
     return NextResponse.json({ error: `Couldn't start the build: ${e.message}` }, { status: 500 });

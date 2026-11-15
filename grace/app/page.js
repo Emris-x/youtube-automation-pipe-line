@@ -50,6 +50,14 @@ export default function Page() {
   const [pendingBuild, setPendingBuild] = useState(false); // true after "go upload pictures" -- shows a "continue build" button on necessities
   const [scriptFocused, setScriptFocused] = useState(false); // is the script textarea currently focused -- drives Grace's "looking at your script" expression
   const [visualMode, setVisualMode] = useState("pictures"); // "pictures" (library photos + upload gate) | "stickman" (no library, fully hands-off)
+  const [engine, setEngine] = useState("turbo"); // "turbo" (MoneyPrinterTurbo: stock footage + subtitles + music) | "classic" (GRACE's own renderer)
+  const [createInputMode, setCreateInputMode] = useState("script"); // turbo only: "script" (pasted) | "ai" (LLM writes it from a topic)
+  const [aspect, setAspect] = useState("9:16"); // turbo only: "9:16" Shorts | "16:9" regular
+  const [turboKeys, setTurboKeys] = useState(null); // {pexels, pixabay, groq, gemini} booleans, or null before first load
+  const [keysOpen, setKeysOpen] = useState(false);
+  const [keyDrafts, setKeyDrafts] = useState({});
+  const [keySaving, setKeySaving] = useState(null);
+  const [keyError, setKeyError] = useState(null);
   const [scriptsQueue, setScriptsQueue] = useState(null); // queued-script records, or null before first load
   const [scriptsLoading, setScriptsLoading] = useState(false);
   const [scriptsBulkText, setScriptsBulkText] = useState("");
@@ -173,6 +181,42 @@ export default function Page() {
       .then((d) => setYtConnected(!!d.connected))
       .catch(() => setYtConnected(false));
   }, [unlocked]);
+
+  function loadTurboKeys() {
+    authedFetch("/api/keys")
+      .then((r) => r.json())
+      .then((d) => { if (d.keys) setTurboKeys(d.keys); })
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    if (unlocked) loadTurboKeys();
+  }, [unlocked]);
+
+  // Saves one key into the repo's encrypted secrets. The field is cleared
+  // straight after -- the value is never kept in the page or in storage.
+  async function saveKey(id) {
+    const value = (keyDrafts[id] || "").trim();
+    if (!value) return;
+    setKeySaving(id);
+    setKeyError(null);
+    try {
+      const res = await authedFetch("/api/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, value }),
+      });
+      const d = await res.json();
+      if (!res.ok) setKeyError(d.error || "Couldn't save that key.");
+      else {
+        setKeyDrafts((k) => ({ ...k, [id]: "" }));
+        setTurboKeys((k) => ({ ...(k || {}), [id]: true }));
+      }
+    } catch (e) {
+      setKeyError(e.message);
+    }
+    setKeySaving(null);
+  }
 
   function loadHistory() {
     setHistoryLoading(true);
@@ -404,7 +448,24 @@ export default function Page() {
   async function createVideo() {
     // Stickman mode never touches the picture library, so there's nothing
     // to gate on -- skip straight to dispatch.
-    if (!createGate && visualMode !== "stickman") {
+    // Turbo can't build without a footage key (or write a script without an
+    // AI key). Stop here with the keys form open rather than start a run
+    // that is certain to fail a few minutes in. Only blocks when the key
+    // status actually loaded -- if that check itself failed, let it through.
+    if (engine === "turbo" && turboKeys) {
+      const missing = !(turboKeys.pexels || turboKeys.pixabay)
+        ? "Add a Pexels key first — turbo needs it to fetch footage."
+        : createInputMode === "ai" && !(turboKeys.groq || turboKeys.gemini)
+          ? "Add a Groq key first — it's what writes the script. Or switch to \"my script\"."
+          : null;
+      if (missing) {
+        setKeysOpen(true);
+        setStatus(missing);
+        return;
+      }
+    }
+
+    if (!createGate && engine === "classic" && visualMode !== "stickman") {
       setBusy(true);
       setStatus("Checking the picture library...");
       try {
@@ -439,7 +500,14 @@ export default function Page() {
       const res = await authedFetch("/api/create-video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ script_text: script, title, visual_mode: visualMode }),
+        body: JSON.stringify({
+          script_text: script,
+          title,
+          visual_mode: visualMode,
+          engine,
+          aspect,
+          input_mode: engine === "turbo" ? createInputMode : "script",
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -554,7 +622,35 @@ export default function Page() {
             )}
           </div>
 
-          <VisualModeToggle value={visualMode} onChange={setVisualMode} />
+          <ChoiceToggle
+            value={engine}
+            onChange={(v) => { setEngine(v); setCreateGate(null); }}
+            options={[["turbo", "turbo · real footage"], ["classic", "classic · grace"]]}
+          />
+
+          {engine === "classic" && <VisualModeToggle value={visualMode} onChange={setVisualMode} />}
+
+          {engine === "turbo" && (
+            <>
+              <ChoiceToggle
+                value={createInputMode}
+                onChange={setCreateInputMode}
+                options={[["script", "my script"], ["ai", "AI writes it"]]}
+              />
+              <ChoiceToggle value={aspect} onChange={setAspect} options={[["9:16", "short 9:16"], ["16:9", "wide 16:9"]]} />
+              <TurboKeysPanel
+                keys={turboKeys}
+                open={keysOpen}
+                onToggle={() => setKeysOpen((o) => !o)}
+                drafts={keyDrafts}
+                onDraft={(id, v) => setKeyDrafts((k) => ({ ...k, [id]: v }))}
+                onSave={saveKey}
+                saving={keySaving}
+                error={keyError}
+                needsLlm={createInputMode === "ai"}
+              />
+            </>
+          )}
 
           <input
             placeholder="title (optional — first line used if blank)"
@@ -563,7 +659,11 @@ export default function Page() {
             style={{ ...inputStyle, width: "100%", boxSizing: "border-box" }}
           />
           <textarea
-            placeholder={"Paste or type your script.\nLeave a blank line between scenes.\nFirst scene = hook, last = call-to-action."}
+            placeholder={
+              engine === "turbo" && createInputMode === "ai"
+                ? "Topic on the first line.\nOptional: one fact per line below it.\nThe AI writes the script from these."
+                : "Paste or type your script.\nLeave a blank line between scenes.\nFirst scene = hook, last = call-to-action."
+            }
             value={script}
             onChange={(e) => setScript(e.target.value)}
             onFocus={() => setScriptFocused(true)}
@@ -1334,6 +1434,90 @@ function VisualModeToggle({ value, onChange, compact }) {
           {label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/** Generic two-or-more-way pill toggle, same look as VisualModeToggle. */
+function ChoiceToggle({ value, onChange, options }) {
+  return (
+    <div style={{ display: "flex", gap: 8, margin: "10px 0", flexWrap: "wrap" }}>
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          style={{
+            ...buttonStyle,
+            padding: "6px 14px",
+            fontSize: 13,
+            borderColor: value === v ? GREEN : DIM,
+            color: value === v ? GREEN : DIM,
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const TURBO_KEY_FIELDS = [
+  { id: "pexels", label: "Pexels (footage)", where: "pexels.com/api", need: "required" },
+  { id: "groq", label: "Groq (AI script + smarter footage)", where: "console.groq.com/keys", need: "optional" },
+  { id: "pixabay", label: "Pixabay (backup footage)", where: "pixabay.com/api/docs", need: "optional" },
+  { id: "gemini", label: "Gemini (alternative AI)", where: "aistudio.google.com/app/apikey", need: "optional" },
+];
+
+/** Status line + collapsible form for the turbo engine's API keys. Keys go
+ * straight into the repo's encrypted secrets; this only ever learns
+ * whether each one is set, never its value. */
+function TurboKeysPanel({ keys, open, onToggle, drafts, onDraft, onSave, saving, error, needsLlm }) {
+  const hasFootage = keys && (keys.pexels || keys.pixabay);
+  const hasLlm = keys && (keys.groq || keys.gemini);
+  let summary = "checking keys...";
+  let color = DIM;
+  if (keys) {
+    if (!hasFootage) { summary = "⚠ footage key missing — turbo can't build yet"; color = "#ffd84a"; }
+    else if (needsLlm && !hasLlm) { summary = "⚠ AI key missing — needed for \"AI writes it\""; color = "#ffd84a"; }
+    else { summary = hasLlm ? "✓ footage + AI keys set" : "✓ footage key set (no AI key: footage picked by keyword rules)"; color = GREEN; }
+  }
+  return (
+    <div style={{ margin: "6px 0 12px" }}>
+      <button onClick={onToggle} style={{ background: "none", border: "none", padding: 0, color, fontFamily: "inherit", fontSize: 13, cursor: "pointer", textAlign: "left" }}>
+        {summary} <span style={{ color: DIM }}>{open ? "· hide keys" : "· keys"}</span>
+      </button>
+      {open && (
+        <div style={{ border: `1px solid ${DIM}`, borderRadius: 6, padding: "10px 12px", marginTop: 8 }}>
+          {TURBO_KEY_FIELDS.map((f) => (
+            <div key={f.id} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 13, color: keys && keys[f.id] ? GREEN : DIM }}>
+                {keys && keys[f.id] ? "✓ " : ""}{f.label} · {f.need} · free at {f.where}
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={keys && keys[f.id] ? "set — paste to replace" : "paste key"}
+                  value={drafts[f.id] || ""}
+                  onChange={(e) => onDraft(f.id, e.target.value)}
+                  style={{ ...inputStyle, margin: "6px 0", flex: 1 }}
+                />
+                <button
+                  onClick={() => onSave(f.id)}
+                  disabled={saving === f.id || !(drafts[f.id] || "").trim()}
+                  style={{ ...buttonStyle, padding: "8px 12px", fontSize: 13, opacity: saving === f.id || !(drafts[f.id] || "").trim() ? 0.5 : 1 }}
+                >
+                  {saving === f.id ? "..." : "save"}
+                </button>
+              </div>
+            </div>
+          ))}
+          {error && <p style={{ color: "#ff5c5c", fontSize: 13, margin: 0 }}>{error}</p>}
+          <p style={{ color: DIM, fontSize: 12, margin: "4px 0 0" }}>
+            Keys are stored as encrypted GitHub secrets. They can be replaced here but never read back.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
